@@ -43,6 +43,7 @@ def add_member_to_channel(chat_id: int, user_id: int) -> bool:
         json={"user_ids": [user_id]},
         timeout=10,
     )
+    log.info("add_member status=%s body=%s", resp.status_code, resp.text)
     if not resp.ok:
         log.warning("add_member failed: %s %s", resp.status_code, resp.text)
         return False
@@ -56,6 +57,7 @@ def remove_member_from_channel(chat_id: int, user_id: int) -> bool:
         json={"user_id": user_id},
         timeout=10,
     )
+    log.info("remove_member status=%s body=%s", resp.status_code, resp.text)
     if not resp.ok:
         log.warning("remove_member failed: %s %s", resp.status_code, resp.text)
         return False

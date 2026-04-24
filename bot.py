@@ -130,16 +130,15 @@ def _on_payment_succeeded(payment_id: str, user_id: int) -> None:
     if added:
         max_api.send_message(
             user_id,
-            f"Оплата прошла успешно!\n\nВы добавлены в закрытый канал.\n"
-            f"Ссылка: {config.MAX_CHANNEL_INVITE_LINK}",
+            "Оплата прошла успешно!\n\nВы добавлены в закрытый канал. "
+            "Откройте MAX — канал уже появился в ваших чатах.",
         )
         log.info("Подписка активирована: user_id=%s payment_id=%s", user_id, payment_id)
     else:
         max_api.send_message(
             user_id,
-            f"Оплата прошла, но не удалось добавить вас в канал автоматически.\n"
-            f"Ссылка для вступления: {config.MAX_CHANNEL_INVITE_LINK}\n"
-            "Если возникнут проблемы — свяжитесь с администратором.",
+            "Оплата прошла, но не удалось добавить вас в канал автоматически. "
+            "Обратитесь к администратору — он добавит вас вручную.",
         )
         log.error("Не удалось добавить user_id=%s в канал после оплаты %s", user_id, payment_id)
 
