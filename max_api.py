@@ -12,11 +12,8 @@ def _url(path: str) -> str:
     return f"{BASE_URL}{path}"
 
 
-def _params(extra: dict | None = None) -> dict:
-    p = {"access_token": config.MAX_BOT_TOKEN}
-    if extra:
-        p.update(extra)
-    return p
+def _headers() -> dict:
+    return {"Authorization": config.MAX_BOT_TOKEN}
 
 
 def send_message(user_id: int, text: str, buttons: list[list[dict]] | None = None) -> dict:
@@ -30,7 +27,8 @@ def send_message(user_id: int, text: str, buttons: list[list[dict]] | None = Non
         ]
     resp = requests.post(
         _url("/messages"),
-        params=_params({"user_id": user_id}),
+        params={"user_id": user_id},
+        headers=_headers(),
         json=body,
         timeout=10,
     )
@@ -41,7 +39,7 @@ def send_message(user_id: int, text: str, buttons: list[list[dict]] | None = Non
 def add_member_to_channel(chat_id: int, user_id: int) -> bool:
     resp = requests.post(
         _url(f"/chats/{chat_id}/members"),
-        params=_params(),
+        headers=_headers(),
         json={"user_ids": [user_id]},
         timeout=10,
     )
@@ -54,7 +52,7 @@ def add_member_to_channel(chat_id: int, user_id: int) -> bool:
 def remove_member_from_channel(chat_id: int, user_id: int) -> bool:
     resp = requests.delete(
         _url(f"/chats/{chat_id}/members"),
-        params=_params(),
+        headers=_headers(),
         json={"user_id": user_id},
         timeout=10,
     )
@@ -65,12 +63,13 @@ def remove_member_from_channel(chat_id: int, user_id: int) -> bool:
 
 
 def get_updates(marker: int | None = None, timeout: int = 30) -> dict:
-    params = _params({"timeout": timeout})
+    params: dict = {"timeout": timeout}
     if marker is not None:
         params["marker"] = marker
     resp = requests.get(
         _url("/updates"),
         params=params,
+        headers=_headers(),
         timeout=timeout + 5,
     )
     resp.raise_for_status()
