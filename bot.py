@@ -109,11 +109,15 @@ def run_payment_poller() -> None:
 
 def _check_pending_payments() -> None:
     pending = db.get_pending_payments()
+    if not pending:
+        return
+    log.info("Поллер: проверяю %d платёж(ей)", len(pending))
     for row in pending:
         payment_id: str = row["payment_id"]
         user_id: int = row["user_id"]
         try:
             status = payments.check_payment_status(payment_id)
+            log.info("Платёж %s → статус: %s", payment_id, status)
         except Exception:
             log.exception("Ошибка проверки статуса платежа %s", payment_id)
             continue
