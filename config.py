@@ -5,7 +5,6 @@ load_dotenv()
 
 MAX_BOT_TOKEN: str = os.environ["MAX_BOT_TOKEN"]
 MAX_CHANNEL_ID: int = int(os.environ["MAX_CHANNEL_ID"])
-MAX_CHANNEL_INVITE_LINK: str = os.environ["MAX_CHANNEL_INVITE_LINK"]
 
 YOOKASSA_SHOP_ID: str = os.environ["YOOKASSA_SHOP_ID"]
 YOOKASSA_SECRET_KEY: str = os.environ["YOOKASSA_SECRET_KEY"]

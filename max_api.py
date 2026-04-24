@@ -70,6 +70,18 @@ def remove_member_from_channel(chat_id: int, user_id: int) -> bool:
     return True
 
 
+def get_channel_invite_link(chat_id: int) -> str | None:
+    resp = requests.get(
+        _url(f"/chats/{chat_id}"),
+        headers=_headers(),
+        timeout=10,
+    )
+    if not resp.ok:
+        log.warning("get_channel_info failed: %s %s", resp.status_code, resp.text)
+        return None
+    return resp.json().get("link")
+
+
 def get_updates(marker: int | None = None, timeout: int = 30) -> dict:
     params: dict = {"timeout": timeout}
     if marker is not None:
