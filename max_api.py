@@ -59,8 +59,8 @@ def add_member_to_channel(chat_id: int, user_id: int) -> bool:
 def remove_member_from_channel(chat_id: int, user_id: int) -> bool:
     resp = requests.delete(
         _url(f"/chats/{chat_id}/members"),
+        params={"user_id": user_id},
         headers=_headers(),
-        json={"user_id": user_id},
         timeout=10,
     )
     log.info("remove_member status=%s body=%s", resp.status_code, resp.text)
