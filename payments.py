@@ -27,7 +27,7 @@ def create_payment(user_id: int) -> dict:
             "description": _description(),
             "metadata": {"user_id": str(user_id)},
         },
-        idempotence_key=str(uuid.uuid4()),
+        str(uuid.uuid4()),
     )
     return {
         "payment_id": payment.id,
