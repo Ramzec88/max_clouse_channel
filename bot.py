@@ -13,6 +13,14 @@ logging.basicConfig(
 )
 log = logging.getLogger(__name__)
 
+_PRIVACY_MSG = (
+    "Ваши настройки приватности запрещают добавление в каналы.\n\n"
+    "Чтобы получить доступ:\n"
+    "Настройки MAX → Конфиденциальность → "
+    "Кто может добавлять в группы → Все\n\n"
+    "После этого нажмите кнопку ниже."
+)
+
 # ──────────────────────────────────────────────
 # Обработчики событий от MAX
 # ──────────────────────────────────────────────
@@ -42,23 +50,36 @@ def _on_callback(callback: dict) -> None:
         _handle_subscribe(user_id)
     elif payload == "renew":
         _handle_subscribe(user_id)
+    elif payload == "retry_add":
+        _handle_retry_add(user_id)
 
 
 def _cmd_start(user_id: int) -> None:
     sub = db.get_active_subscription(user_id)
     if sub:
-        max_api.send_message(
-            user_id,
-            f"У вас уже есть активная подписка до {_fmt_date(sub['expires_at'])}.\n"
-            f"Ссылка на канал: {config.MAX_CHANNEL_INVITE_LINK}",
-        )
+        # Есть активная подписка — пробуем добавить (на случай если ещё не в канале)
+        added = max_api.add_member_to_channel(config.MAX_CHANNEL_ID, user_id)
+        if added:
+            max_api.send_message(
+                user_id,
+                f"Ваша подписка активна до {_fmt_date(sub['expires_at'])}.\n"
+                "Канал доступен в ваших чатах MAX.",
+            )
+        else:
+            max_api.send_message(
+                user_id,
+                f"Ваша подписка активна до {_fmt_date(sub['expires_at'])}.\n\n"
+                + _PRIVACY_MSG,
+                buttons=[[{"type": "callback", "text": "Попробовать ещё раз", "payload": "retry_add"}]],
+            )
         return
 
     period = f"{config.SUBSCRIPTION_MINUTES} мин." if config.SUBSCRIPTION_MINUTES else f"{config.SUBSCRIPTION_MONTHS} мес."
     max_api.send_message(
         user_id,
         f"Добро пожаловать!\n\n"
-        f"Получите доступ к закрытому каналу на {period} — всего {config.SUBSCRIPTION_PRICE} {config.SUBSCRIPTION_CURRENCY}.\n\n"
+        f"Получите доступ к закрытому каналу на {period} — "
+        f"всего {config.SUBSCRIPTION_PRICE} {config.SUBSCRIPTION_CURRENCY}.\n\n"
         "Нажмите кнопку ниже, чтобы оплатить.",
         buttons=[[{"type": "callback", "text": f"Подписаться за {config.SUBSCRIPTION_PRICE} руб.", "payload": "subscribe"}]],
     )
@@ -68,14 +89,14 @@ def _handle_subscribe(user_id: int) -> None:
     if db.has_pending_payment(user_id):
         max_api.send_message(
             user_id,
-            "Ваш платёж уже ожидает подтверждения. Пожалуйста, завершите оплату по ранее отправленной ссылке.",
+            "Ваш платёж уже ожидает подтверждения. Завершите оплату по ранее отправленной ссылке.",
         )
         return
 
     if db.get_active_subscription(user_id):
         max_api.send_message(
             user_id,
-            "У вас уже есть активная подписка. Напишите /start чтобы получить ссылку на канал.",
+            "У вас уже есть активная подписка. Напишите /start.",
         )
         return
 
@@ -93,6 +114,29 @@ def _handle_subscribe(user_id: int) -> None:
         "После оплаты вы будете автоматически добавлены в канал (обычно в течение 15 секунд).",
     )
     log.info("Создан платёж %s для user_id=%s", payment["payment_id"], user_id)
+
+
+def _handle_retry_add(user_id: int) -> None:
+    sub = db.get_active_subscription(user_id)
+    if not sub:
+        max_api.send_message(user_id, "Активная подписка не найдена. Напишите /start.")
+        return
+
+    added = max_api.add_member_to_channel(config.MAX_CHANNEL_ID, user_id)
+    if added:
+        max_api.send_message(
+            user_id,
+            "Готово! Вы добавлены в канал. Откройте MAX — канал появился в ваших чатах.",
+        )
+        log.info("retry_add успешно: user_id=%s", user_id)
+    else:
+        max_api.send_message(
+            user_id,
+            "Всё ещё не получается. Убедитесь что изменили настройку и попробуйте снова.\n\n"
+            + _PRIVACY_MSG,
+            buttons=[[{"type": "callback", "text": "Попробовать ещё раз", "payload": "retry_add"}]],
+        )
+        log.warning("retry_add не удался: user_id=%s", user_id)
 
 
 # ──────────────────────────────────────────────
@@ -139,25 +183,12 @@ def _on_payment_succeeded(payment_id: str, user_id: int) -> None:
         )
         log.info("Подписка активирована (API): user_id=%s payment_id=%s", user_id, payment_id)
     else:
-        # Настройки приватности не позволяют добавить напрямую — даём актуальную ссылку в личку
-        invite_link = max_api.get_channel_invite_link(config.MAX_CHANNEL_ID)
-        if invite_link:
-            max_api.send_message(
-                user_id,
-                "Оплата прошла успешно!\n\n"
-                "Не удалось добавить вас автоматически — скорее всего, в настройках MAX "
-                "у вас закрыто добавление в каналы.\n\n"
-                f"Перейдите по ссылке для вступления:\n{invite_link}\n\n"
-                "Чтобы в будущем добавление работало автоматически:\n"
-                "Настройки MAX → Конфиденциальность → Кто может добавлять в группы → Все",
-            )
-        else:
-            max_api.send_message(
-                user_id,
-                "Оплата прошла успешно, но не удалось добавить вас в канал. "
-                "Обратитесь к администратору.",
-            )
-        log.warning("Подписка активирована (invite-link fallback): user_id=%s payment_id=%s", user_id, payment_id)
+        max_api.send_message(
+            user_id,
+            "Оплата прошла успешно!\n\n" + _PRIVACY_MSG,
+            buttons=[[{"type": "callback", "text": "Попробовать ещё раз", "payload": "retry_add"}]],
+        )
+        log.warning("Подписка активирована (privacy blocked): user_id=%s payment_id=%s", user_id, payment_id)
 
 
 def _on_payment_canceled(payment_id: str, user_id: int) -> None:
