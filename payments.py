@@ -11,8 +11,9 @@ def configure() -> None:
     yookassa.Configuration.secret_key = config.YOOKASSA_SECRET_KEY
 
 
-def create_payment(user_id: int) -> dict:
-    """Создаёт платёж в ЮKassa. Возвращает payment_id и ссылку для оплаты."""
+def create_payment(user_id: int, email: str) -> dict:
+    """Создаёт платёж в ЮKassa с фискальным чеком. Возвращает payment_id и ссылку."""
+    description = _description()
     payment = Payment.create(
         {
             "amount": {
@@ -24,8 +25,24 @@ def create_payment(user_id: int) -> dict:
                 "return_url": "https://max.ru",
             },
             "capture": True,
-            "description": _description(),
+            "description": description,
             "metadata": {"user_id": str(user_id)},
+            "receipt": {
+                "customer": {"email": email},
+                "items": [
+                    {
+                        "description": description,
+                        "quantity": "1.00",
+                        "amount": {
+                            "value": config.SUBSCRIPTION_PRICE,
+                            "currency": config.SUBSCRIPTION_CURRENCY,
+                        },
+                        "vat_code": 1,          # без НДС
+                        "payment_mode": "full_payment",
+                        "payment_subject": "service",
+                    }
+                ],
+            },
         },
         str(uuid.uuid4()),
     )

@@ -1,4 +1,5 @@
 import logging
+import re
 import threading
 import time
 
@@ -20,6 +21,11 @@ _PRIVACY_MSG = (
     "Кто может добавлять в группы → Все\n\n"
     "После этого нажмите кнопку ниже."
 )
+
+# user_id → "waiting_email"
+_user_state: dict[int, str] = {}
+
+_EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
 # ──────────────────────────────────────────────
 # Обработчики событий от MAX
@@ -43,6 +49,11 @@ def handle_update(update: dict) -> None:
 def _on_message(message: dict) -> None:
     user_id: int = message["sender"]["user_id"]
     text: str = message.get("body", {}).get("text", "").strip()
+
+    if _user_state.get(user_id) == "waiting_email":
+        _handle_email_input(user_id, text)
+        return
+
     if text in ("/start", "/start@"):
         _cmd_start(user_id)
 
@@ -104,8 +115,26 @@ def _handle_subscribe(user_id: int) -> None:
         )
         return
 
+    _user_state[user_id] = "waiting_email"
+    max_api.send_message(
+        user_id,
+        "Для выставления чека укажите ваш email:",
+    )
+
+
+def _handle_email_input(user_id: int, text: str) -> None:
+    if not _EMAIL_RE.match(text):
+        max_api.send_message(
+            user_id,
+            "Это не похоже на email. Попробуйте ещё раз (например: name@mail.ru):",
+        )
+        return
+
+    _user_state.pop(user_id, None)
+    email = text.lower()
+
     try:
-        payment = payments.create_payment(user_id)
+        payment = payments.create_payment(user_id, email)
     except Exception:
         log.exception("Не удалось создать платёж для user_id=%s", user_id)
         max_api.send_message(user_id, "Не удалось создать платёж. Попробуйте позже.")
@@ -117,7 +146,7 @@ def _handle_subscribe(user_id: int) -> None:
         f"Оплатите подписку по ссылке:\n{payment['confirmation_url']}\n\n"
         "После оплаты вы будете автоматически добавлены в канал (обычно в течение 15 секунд).",
     )
-    log.info("Создан платёж %s для user_id=%s", payment["payment_id"], user_id)
+    log.info("Создан платёж %s для user_id=%s email=%s", payment["payment_id"], user_id, email)
 
 
 def _on_user_added(update: dict) -> None:
