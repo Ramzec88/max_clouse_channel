@@ -1,134 +1,152 @@
-import sqlite3
-import threading
+import psycopg2
+import psycopg2.pool
+import psycopg2.extras
+from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 
 import config
 
-_lock = threading.Lock()
+_pool: psycopg2.pool.ThreadedConnectionPool | None = None
 
 DDL = """
 CREATE TABLE IF NOT EXISTS subscriptions (
-    id           INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id      INTEGER NOT NULL,
-    payment_id   TEXT    NOT NULL UNIQUE,
-    status       TEXT    NOT NULL DEFAULT 'pending',
-    channel_id   INTEGER NOT NULL,
-    created_at   TEXT    NOT NULL,
-    expires_at   TEXT,
-    confirmed_at TEXT
+    id           SERIAL PRIMARY KEY,
+    user_id      BIGINT NOT NULL,
+    payment_id   TEXT   NOT NULL UNIQUE,
+    status       TEXT   NOT NULL DEFAULT 'pending',
+    channel_id   BIGINT NOT NULL,
+    created_at   TIMESTAMPTZ NOT NULL,
+    expires_at   TIMESTAMPTZ,
+    confirmed_at TIMESTAMPTZ
 );
 CREATE INDEX IF NOT EXISTS idx_sub_user   ON subscriptions(user_id);
 CREATE INDEX IF NOT EXISTS idx_sub_status ON subscriptions(status);
 """
 
 
-def _connect() -> sqlite3.Connection:
-    conn = sqlite3.connect(config.DB_PATH)
-    conn.row_factory = sqlite3.Row
-    return conn
-
-
 def init_db() -> None:
-    with _lock, _connect() as conn:
-        conn.executescript(DDL)
+    global _pool
+    _pool = psycopg2.pool.ThreadedConnectionPool(1, 5, config.DATABASE_URL)
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(DDL)
+        conn.commit()
+
+
+@contextmanager
+def _get_conn():
+    conn = _pool.getconn()
+    try:
+        yield conn
+    finally:
+        _pool.putconn(conn)
+
+
+def _cursor(conn):
+    return conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
 
 def save_pending_payment(user_id: int, payment_id: str, channel_id: int) -> None:
-    now = _now()
-    with _lock, _connect() as conn:
-        conn.execute(
-            "INSERT INTO subscriptions (user_id, payment_id, status, channel_id, created_at)"
-            " VALUES (?, ?, 'pending', ?, ?)",
-            (user_id, payment_id, channel_id, now),
-        )
+    now = datetime.now(timezone.utc)
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "INSERT INTO subscriptions (user_id, payment_id, status, channel_id, created_at)"
+                " VALUES (%s, %s, 'pending', %s, %s)",
+                (user_id, payment_id, channel_id, now),
+            )
+        conn.commit()
 
 
 def get_pending_payments() -> list[dict]:
-    with _lock, _connect() as conn:
-        rows = conn.execute(
-            "SELECT * FROM subscriptions WHERE status = 'pending'"
-        ).fetchall()
-    return [dict(r) for r in rows]
+    with _get_conn() as conn:
+        with _cursor(conn) as cur:
+            cur.execute("SELECT * FROM subscriptions WHERE status = 'pending'")
+            return [dict(r) for r in cur.fetchall()]
 
 
 def activate_subscription(payment_id: str) -> int:
-    now = _now()
+    now = datetime.now(timezone.utc)
     expires = _expiry_from_now()
-    with _lock, _connect() as conn:
-        conn.execute(
-            "UPDATE subscriptions SET status='active', confirmed_at=?, expires_at=?"
-            " WHERE payment_id=?",
-            (now, expires, payment_id),
-        )
-        row = conn.execute(
-            "SELECT user_id FROM subscriptions WHERE payment_id=?", (payment_id,)
-        ).fetchone()
-    return row["user_id"]
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE subscriptions SET status='active', confirmed_at=%s, expires_at=%s"
+                " WHERE payment_id=%s RETURNING user_id",
+                (now, expires, payment_id),
+            )
+            row = cur.fetchone()
+        conn.commit()
+    return row[0]
 
 
 def cancel_payment(payment_id: str) -> None:
-    with _lock, _connect() as conn:
-        conn.execute(
-            "UPDATE subscriptions SET status='canceled' WHERE payment_id=?",
-            (payment_id,),
-        )
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE subscriptions SET status='canceled' WHERE payment_id=%s",
+                (payment_id,),
+            )
+        conn.commit()
 
 
 def get_active_subscription(user_id: int) -> dict | None:
-    now = _now()
-    with _lock, _connect() as conn:
-        row = conn.execute(
-            "SELECT * FROM subscriptions WHERE user_id=? AND status='active' AND expires_at > ?"
-            " ORDER BY expires_at DESC LIMIT 1",
-            (user_id, now),
-        ).fetchone()
+    now = datetime.now(timezone.utc)
+    with _get_conn() as conn:
+        with _cursor(conn) as cur:
+            cur.execute(
+                "SELECT * FROM subscriptions WHERE user_id=%s AND status='active'"
+                " AND expires_at > %s ORDER BY expires_at DESC LIMIT 1",
+                (user_id, now),
+            )
+            row = cur.fetchone()
     return dict(row) if row else None
 
 
 def has_pending_payment(user_id: int) -> bool:
-    with _lock, _connect() as conn:
-        row = conn.execute(
-            "SELECT 1 FROM subscriptions WHERE user_id=? AND status='pending'",
-            (user_id,),
-        ).fetchone()
-    return row is not None
-
-
-def get_active_subscriptions_all() -> list[dict]:
-    now = _now()
-    with _lock, _connect() as conn:
-        rows = conn.execute(
-            "SELECT * FROM subscriptions WHERE status='active' AND expires_at > ?",
-            (now,),
-        ).fetchall()
-    return [dict(r) for r in rows]
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT 1 FROM subscriptions WHERE user_id=%s AND status='pending'",
+                (user_id,),
+            )
+            return cur.fetchone() is not None
 
 
 def get_expired_subscriptions() -> list[dict]:
-    now = _now()
-    with _lock, _connect() as conn:
-        rows = conn.execute(
-            "SELECT * FROM subscriptions WHERE status='active' AND expires_at <= ?",
-            (now,),
-        ).fetchall()
-    return [dict(r) for r in rows]
+    now = datetime.now(timezone.utc)
+    with _get_conn() as conn:
+        with _cursor(conn) as cur:
+            cur.execute(
+                "SELECT * FROM subscriptions WHERE status='active' AND expires_at <= %s",
+                (now,),
+            )
+            return [dict(r) for r in cur.fetchall()]
 
 
 def mark_expired(payment_id: str) -> None:
-    with _lock, _connect() as conn:
-        conn.execute(
-            "UPDATE subscriptions SET status='expired' WHERE payment_id=?",
-            (payment_id,),
-        )
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE subscriptions SET status='expired' WHERE payment_id=%s",
+                (payment_id,),
+            )
+        conn.commit()
 
 
-def _now() -> str:
-    return datetime.now(timezone.utc).isoformat()
+def get_active_subscriptions_all() -> list[dict]:
+    now = datetime.now(timezone.utc)
+    with _get_conn() as conn:
+        with _cursor(conn) as cur:
+            cur.execute(
+                "SELECT * FROM subscriptions WHERE status='active' AND expires_at > %s",
+                (now,),
+            )
+            return [dict(r) for r in cur.fetchall()]
 
 
-def _expiry_from_now() -> str:
+def _expiry_from_now() -> datetime:
     now = datetime.now(timezone.utc)
     if config.SUBSCRIPTION_MINUTES is not None:
-        return (now + timedelta(minutes=config.SUBSCRIPTION_MINUTES)).isoformat()
-    # Приблизительный месяц: 30 дней * SUBSCRIPTION_MONTHS
-    return (now + timedelta(days=30 * config.SUBSCRIPTION_MONTHS)).isoformat()
+        return now + timedelta(minutes=config.SUBSCRIPTION_MINUTES)
+    return now + timedelta(days=30 * config.SUBSCRIPTION_MONTHS)

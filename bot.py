@@ -320,7 +320,6 @@ def _fmt_date(iso: str) -> str:
 if __name__ == "__main__":
     import platform
     log.info("Python %s on %s", platform.python_version(), platform.system())
-    log.info("БД: %s (внимание: на Railway данные сбросятся при рестарте)", config.DB_PATH)
 
     db.init_db()
     payments.configure()
