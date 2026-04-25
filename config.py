@@ -17,5 +17,5 @@ _minutes = os.getenv("SUBSCRIPTION_MINUTES")
 SUBSCRIPTION_MINUTES: int | None = int(_minutes) if _minutes else None
 SUBSCRIPTION_MONTHS: int = int(os.getenv("SUBSCRIPTION_MONTHS", "1"))
 
-DATABASE_URL: str = os.environ["DATABASE_URL"]
+DATABASE_URL: str = os.environ.get("DATABASE_URL") or os.environ["DATABASE_PUBLIC_URL"]
 POLL_INTERVAL_SECONDS: int = int(os.getenv("POLL_INTERVAL_SECONDS", "15"))
