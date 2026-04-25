@@ -183,10 +183,10 @@ def run_payment_poller() -> None:
             active_count = len(db.get_active_subscriptions_all())
             if active_count:
                 log.info("Поллер: активных подписок в БД: %d", active_count)
+            _check_pending_payments()
+            _check_expired_subscriptions()
         except Exception:
-            pass
-        _check_pending_payments()
-        _check_expired_subscriptions()
+            log.exception("Необработанная ошибка в поллере, продолжаем")
 
 
 def _check_pending_payments() -> None:
@@ -264,9 +264,11 @@ def _check_expired_subscriptions() -> None:
         user_id: int = row["user_id"]
         channel_id: int = row["channel_id"]
         try:
-            db.mark_expired(payment_id)
             removed = max_api.remove_member_from_channel(channel_id, user_id)
             log.info("Удаление из канала: user_id=%s removed=%s", user_id, removed)
+
+            # Помечаем истёкшей только после удаления — чтобы повторить если не вышло
+            db.mark_expired(payment_id)
 
             period = f"{config.SUBSCRIPTION_MINUTES} мин." if config.SUBSCRIPTION_MINUTES else f"{config.SUBSCRIPTION_MONTHS} мес."
             max_api.send_message(
