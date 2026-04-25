@@ -186,12 +186,23 @@ def _on_payment_succeeded(payment_id: str, user_id: int) -> None:
         )
         log.info("Подписка активирована (API): user_id=%s payment_id=%s", user_id, payment_id)
     else:
-        max_api.send_message(
-            user_id,
-            "Оплата прошла успешно!\n\n" + _PRIVACY_MSG,
-            buttons=[[{"type": "callback", "text": "Попробовать ещё раз", "payload": "retry_add"}]],
-        )
-        log.warning("Подписка активирована (privacy blocked): user_id=%s payment_id=%s", user_id, payment_id)
+        # Настройки приватности блокируют прямое добавление — отправляем ссылку в личку
+        invite_link = max_api.get_channel_invite_link(config.MAX_CHANNEL_ID)
+        if invite_link:
+            max_api.send_message(
+                user_id,
+                "Оплата прошла успешно!\n\n"
+                "Ваши настройки приватности не позволяют добавить вас автоматически. "
+                "Вступите по персональной ссылке:\n\n"
+                f"{invite_link}",
+            )
+        else:
+            max_api.send_message(
+                user_id,
+                "Оплата прошла успешно, но не удалось добавить вас в канал. "
+                "Обратитесь к администратору.",
+            )
+        log.warning("Подписка активирована (invite-link fallback): user_id=%s payment_id=%s", user_id, payment_id)
 
 
 def _on_payment_canceled(payment_id: str, user_id: int) -> None:
