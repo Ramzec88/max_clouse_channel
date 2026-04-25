@@ -32,6 +32,9 @@ def handle_update(update: dict) -> None:
             _on_message(update["message"])
         elif update_type == "message_callback":
             _on_callback(update["callback"])
+        else:
+            # Логируем все неизвестные события целиком для исследования
+            log.info("UNKNOWN UPDATE type=%s full=%s", update_type, update)
     except Exception:
         log.exception("Ошибка при обработке события %s", update_type)
 
