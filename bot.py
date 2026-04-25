@@ -32,8 +32,9 @@ def handle_update(update: dict) -> None:
             _on_message(update["message"])
         elif update_type == "message_callback":
             _on_callback(update["callback"])
+        elif update_type == "user_added":
+            _on_user_added(update)
         else:
-            # Логируем все неизвестные события целиком для исследования
             log.info("UNKNOWN UPDATE type=%s full=%s", update_type, update)
     except Exception:
         log.exception("Ошибка при обработке события %s", update_type)
@@ -117,6 +118,34 @@ def _handle_subscribe(user_id: int) -> None:
         "После оплаты вы будете автоматически добавлены в канал (обычно в течение 15 секунд).",
     )
     log.info("Создан платёж %s для user_id=%s", payment["payment_id"], user_id)
+
+
+def _on_user_added(update: dict) -> None:
+    # Срабатывает при любом вступлении: по ссылке или через API
+    if not update.get("is_channel"):
+        return  # интересуют только каналы
+    user_id: int = update["user_id"]
+    chat_id: int = update["chat_id"]
+
+    if chat_id != config.MAX_CHANNEL_ID:
+        return  # событие из другого чата
+
+    if db.get_active_subscription(user_id):
+        log.info("user_added: user_id=%s — подписка активна, пропускаем", user_id)
+        return
+
+    # Нет активной подписки — немедленно кикаем
+    log.warning("user_added: user_id=%s — нет подписки, кикаем", user_id)
+    max_api.remove_member_from_channel(chat_id, user_id)
+
+    period = f"{config.SUBSCRIPTION_MINUTES} мин." if config.SUBSCRIPTION_MINUTES else f"{config.SUBSCRIPTION_MONTHS} мес."
+    max_api.send_message(
+        user_id,
+        "У вас нет активной подписки на этот канал.\n\n"
+        f"Оформите подписку на {period} — "
+        f"{config.SUBSCRIPTION_PRICE} {config.SUBSCRIPTION_CURRENCY}.",
+        buttons=[[{"type": "callback", "text": f"Подписаться за {config.SUBSCRIPTION_PRICE} руб.", "payload": "subscribe"}]],
+    )
 
 
 def _handle_retry_add(user_id: int) -> None:
