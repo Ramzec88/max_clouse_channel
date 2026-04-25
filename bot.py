@@ -179,6 +179,12 @@ def run_payment_poller() -> None:
     log.info("Поллер платежей запущен (интервал %d сек.)", config.POLL_INTERVAL_SECONDS)
     while True:
         time.sleep(config.POLL_INTERVAL_SECONDS)
+        try:
+            active_count = len(db.get_active_subscriptions_all())
+            if active_count:
+                log.info("Поллер: активных подписок в БД: %d", active_count)
+        except Exception:
+            pass
         _check_pending_payments()
         _check_expired_subscriptions()
 
@@ -244,23 +250,34 @@ def _on_payment_canceled(payment_id: str, user_id: int) -> None:
 
 
 def _check_expired_subscriptions() -> None:
-    expired = db.get_expired_subscriptions()
+    try:
+        expired = db.get_expired_subscriptions()
+    except Exception:
+        log.exception("Ошибка получения истёкших подписок")
+        return
+
+    if expired:
+        log.info("Поллер: найдено %d истёкших подписок", len(expired))
+
     for row in expired:
         payment_id: str = row["payment_id"]
         user_id: int = row["user_id"]
         channel_id: int = row["channel_id"]
+        try:
+            db.mark_expired(payment_id)
+            removed = max_api.remove_member_from_channel(channel_id, user_id)
+            log.info("Удаление из канала: user_id=%s removed=%s", user_id, removed)
 
-        db.mark_expired(payment_id)
-        max_api.remove_member_from_channel(channel_id, user_id)
-
-        period = f"{config.SUBSCRIPTION_MINUTES} мин." if config.SUBSCRIPTION_MINUTES else f"{config.SUBSCRIPTION_MONTHS} мес."
-        max_api.send_message(
-            user_id,
-            "Ваша подписка на закрытый канал истекла. Вы были удалены из канала.\n\n"
-            f"Чтобы возобновить доступ, оформите новую подписку на {period}.",
-            buttons=[[{"type": "callback", "text": f"Продлить за {config.SUBSCRIPTION_PRICE} руб.", "payload": "renew"}]],
-        )
-        log.info("Подписка истекла: user_id=%s payment_id=%s", user_id, payment_id)
+            period = f"{config.SUBSCRIPTION_MINUTES} мин." if config.SUBSCRIPTION_MINUTES else f"{config.SUBSCRIPTION_MONTHS} мес."
+            max_api.send_message(
+                user_id,
+                "Ваша подписка на закрытый канал истекла. Вы были удалены из канала.\n\n"
+                f"Чтобы возобновить доступ, оформите новую подписку на {period}.",
+                buttons=[[{"type": "callback", "text": f"Продлить за {config.SUBSCRIPTION_PRICE} руб.", "payload": "renew"}]],
+            )
+            log.info("Подписка истекла: user_id=%s payment_id=%s", user_id, payment_id)
+        except Exception:
+            log.exception("Ошибка при обработке истёкшей подписки user_id=%s payment_id=%s", user_id, payment_id)
 
 
 # ──────────────────────────────────────────────

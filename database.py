@@ -94,6 +94,16 @@ def has_pending_payment(user_id: int) -> bool:
     return row is not None
 
 
+def get_active_subscriptions_all() -> list[dict]:
+    now = _now()
+    with _lock, _connect() as conn:
+        rows = conn.execute(
+            "SELECT * FROM subscriptions WHERE status='active' AND expires_at > ?",
+            (now,),
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
 def get_expired_subscriptions() -> list[dict]:
     now = _now()
     with _lock, _connect() as conn:
