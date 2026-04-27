@@ -40,6 +40,8 @@ def handle_update(update: dict) -> None:
             _on_callback(update["callback"])
         elif update_type == "user_added":
             _on_user_added(update)
+        elif update_type == "bot_started":
+            _cmd_start(update["user"]["user_id"])
         else:
             log.info("UNKNOWN UPDATE type=%s full=%s", update_type, update)
     except Exception:
