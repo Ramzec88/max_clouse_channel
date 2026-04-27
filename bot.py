@@ -14,12 +14,15 @@ logging.basicConfig(
 )
 log = logging.getLogger(__name__)
 
+_SUPPORT = "Поддержка: https://max.ru/id320203526914_3_bot"
+
 _PRIVACY_MSG = (
     "Ваши настройки приватности запрещают добавление в каналы.\n\n"
     "Чтобы получить доступ:\n"
     "Настройки MAX → Конфиденциальность → "
     "Кто может добавлять в группы → Все\n\n"
-    "После этого нажмите кнопку ниже."
+    "После этого нажмите кнопку ниже.\n\n"
+    f"{_SUPPORT}"
 )
 
 # user_id → "waiting_email"
@@ -139,7 +142,7 @@ def _handle_email_input(user_id: int, text: str) -> None:
         payment = payments.create_payment(user_id, email)
     except Exception:
         log.exception("Не удалось создать платёж для user_id=%s", user_id)
-        max_api.send_message(user_id, "Не удалось создать платёж. Попробуйте позже.")
+        max_api.send_message(user_id, f"Не удалось создать платёж. Попробуйте позже.\n\n{_SUPPORT}")
         return
 
     db.save_pending_payment(user_id, payment["payment_id"], config.MAX_CHANNEL_ID)
@@ -174,7 +177,8 @@ def _on_user_added(update: dict) -> None:
         user_id,
         "У вас нет активной подписки на этот канал.\n\n"
         f"Оформите подписку на {period} — "
-        f"{config.SUBSCRIPTION_PRICE} {config.SUBSCRIPTION_CURRENCY}.",
+        f"{config.SUBSCRIPTION_PRICE} {config.SUBSCRIPTION_CURRENCY}.\n\n"
+        f"{_SUPPORT}",
         buttons=[[{"type": "callback", "text": f"Подписаться за {config.SUBSCRIPTION_PRICE} руб.", "payload": "subscribe"}]],
     )
 
@@ -182,7 +186,7 @@ def _on_user_added(update: dict) -> None:
 def _handle_retry_add(user_id: int) -> None:
     sub = db.get_active_subscription(user_id)
     if not sub:
-        max_api.send_message(user_id, "Активная подписка не найдена. Напишите /start.")
+        max_api.send_message(user_id, f"Активная подписка не найдена. Напишите /start.\n\n{_SUPPORT}")
         return
 
     added = max_api.add_member_to_channel(config.MAX_CHANNEL_ID, user_id)
@@ -260,13 +264,13 @@ def _on_payment_succeeded(payment_id: str, user_id: int) -> None:
                 "Оплата прошла успешно!\n\n"
                 "Ваши настройки приватности не позволяют добавить вас автоматически. "
                 "Вступите по персональной ссылке:\n\n"
-                f"{invite_link}",
+                f"{invite_link}\n\n"
+                f"{_SUPPORT}",
             )
         else:
             max_api.send_message(
                 user_id,
-                "Оплата прошла успешно, но не удалось добавить вас в канал. "
-                "Обратитесь к администратору.",
+                f"Оплата прошла успешно, но не удалось добавить вас в канал.\n\n{_SUPPORT}",
             )
         log.warning("Подписка активирована (invite-link fallback): user_id=%s payment_id=%s", user_id, payment_id)
 
