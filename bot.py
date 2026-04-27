@@ -245,8 +245,24 @@ def _check_pending_payments() -> None:
             _on_payment_canceled(payment_id, user_id)
 
 
+def _notify_admin(text: str) -> None:
+    if config.ADMIN_USER_ID:
+        try:
+            max_api.send_message(config.ADMIN_USER_ID, text)
+        except Exception:
+            log.warning("Не удалось отправить уведомление админу")
+
+
 def _on_payment_succeeded(payment_id: str, user_id: int) -> None:
     db.activate_subscription(payment_id)
+    sub = db.get_active_subscription(user_id)
+    expires = _fmt_date(sub["expires_at"]) if sub else "—"
+    _notify_admin(
+        f"Новая подписка!\n"
+        f"user_id: {user_id}\n"
+        f"payment_id: {payment_id}\n"
+        f"Действует до: {expires}"
+    )
     added = max_api.add_member_to_channel(config.MAX_CHANNEL_ID, user_id)
     if added:
         max_api.send_message(
