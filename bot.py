@@ -31,6 +31,33 @@ _user_state: dict[int, str] = {}
 _EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
 # ──────────────────────────────────────────────
+# Вспомогательные функции
+# ──────────────────────────────────────────────
+
+def _save_user_info(user: dict) -> None:
+    try:
+        db.upsert_user(
+            user["user_id"],
+            user.get("name"),
+            user.get("username"),
+        )
+    except Exception:
+        log.warning("Не удалось сохранить инфо о пользователе %s", user.get("user_id"))
+
+
+def _user_label(user_id: int) -> str:
+    u = db.get_user(user_id)
+    parts = []
+    if u:
+        if u.get("name"):
+            parts.append(u["name"])
+        if u.get("username"):
+            parts.append(f"@{u['username']}")
+    parts.append(f"https://max.ru/id{user_id}")
+    return "\n".join(parts)
+
+
+# ──────────────────────────────────────────────
 # Обработчики событий от MAX
 # ──────────────────────────────────────────────
 
@@ -44,7 +71,9 @@ def handle_update(update: dict) -> None:
         elif update_type == "user_added":
             _on_user_added(update)
         elif update_type == "bot_started":
-            _cmd_start(update["user"]["user_id"])
+            user = update["user"]
+            _save_user_info(user)
+            _cmd_start(user["user_id"])
         else:
             log.info("UNKNOWN UPDATE type=%s full=%s", update_type, update)
     except Exception:
@@ -52,7 +81,9 @@ def handle_update(update: dict) -> None:
 
 
 def _on_message(message: dict) -> None:
-    user_id: int = message["sender"]["user_id"]
+    sender = message["sender"]
+    user_id: int = sender["user_id"]
+    _save_user_info(sender)
     text: str = message.get("body", {}).get("text", "").strip()
 
     if _user_state.get(user_id) == "waiting_email":
@@ -259,7 +290,7 @@ def _on_payment_succeeded(payment_id: str, user_id: int) -> None:
     expires = _fmt_date(sub["expires_at"]) if sub else "—"
     _notify_admin(
         f"Новая подписка!\n"
-        f"user_id: {user_id}\n"
+        f"{_user_label(user_id)}\n"
         f"payment_id: {payment_id}\n"
         f"Действует до: {expires}"
     )

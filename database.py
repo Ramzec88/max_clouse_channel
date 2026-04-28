@@ -21,6 +21,13 @@ CREATE TABLE IF NOT EXISTS subscriptions (
 );
 CREATE INDEX IF NOT EXISTS idx_sub_user   ON subscriptions(user_id);
 CREATE INDEX IF NOT EXISTS idx_sub_status ON subscriptions(status);
+
+CREATE TABLE IF NOT EXISTS users (
+    user_id    BIGINT PRIMARY KEY,
+    name       TEXT,
+    username   TEXT,
+    updated_at TIMESTAMPTZ NOT NULL
+);
 """
 
 
@@ -143,6 +150,32 @@ def get_active_subscriptions_all() -> list[dict]:
                 (now,),
             )
             return [dict(r) for r in cur.fetchall()]
+
+
+def upsert_user(user_id: int, name: str | None, username: str | None) -> None:
+    now = datetime.now(timezone.utc)
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO users (user_id, name, username, updated_at)
+                VALUES (%s, %s, %s, %s)
+                ON CONFLICT (user_id) DO UPDATE
+                    SET name = EXCLUDED.name,
+                        username = EXCLUDED.username,
+                        updated_at = EXCLUDED.updated_at
+                """,
+                (user_id, name, username, now),
+            )
+        conn.commit()
+
+
+def get_user(user_id: int) -> dict | None:
+    with _get_conn() as conn:
+        with _cursor(conn) as cur:
+            cur.execute("SELECT * FROM users WHERE user_id = %s", (user_id,))
+            row = cur.fetchone()
+    return dict(row) if row else None
 
 
 def _expiry_from_now() -> datetime:
