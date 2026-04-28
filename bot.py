@@ -52,8 +52,8 @@ def _user_label(user_id: int) -> str:
         if u.get("name"):
             parts.append(u["name"])
         if u.get("username"):
-            parts.append(f"@{u['username']}")
-    parts.append(f"https://max.ru/id{user_id}")
+            parts.append(f"https://max.ru/{u['username']}")
+    parts.append(f"user_id: {user_id}")
     return "\n".join(parts)
 
 
