@@ -16,6 +16,8 @@ log = logging.getLogger(__name__)
 
 _SUPPORT = "Поддержка: https://max.ru/id320203526914_3_bot"
 
+_MARKET_BTN = {"type": "link", "text": "Магазин Мишки Макса", "url": "https://market.mishka-max.ru"}
+
 _PRIVACY_MSG = (
     "Ваши настройки приватности запрещают добавление в каналы.\n\n"
     "Чтобы получить доступ:\n"
@@ -132,7 +134,10 @@ def _cmd_start(user_id: int) -> None:
         f"Получите доступ к закрытому каналу на {period} — "
         f"всего {config.SUBSCRIPTION_PRICE} {config.SUBSCRIPTION_CURRENCY}.\n\n"
         "Нажмите кнопку ниже, чтобы оплатить.",
-        buttons=[[{"type": "callback", "text": f"Подписаться за {config.SUBSCRIPTION_PRICE} руб.", "payload": "subscribe"}]],
+        buttons=[
+            [{"type": "callback", "text": f"Подписаться за {config.SUBSCRIPTION_PRICE} руб.", "payload": "subscribe"}],
+            [_MARKET_BTN],
+        ],
     )
 
 
@@ -210,7 +215,10 @@ def _on_user_added(update: dict) -> None:
         f"Оформите подписку на {period} — "
         f"{config.SUBSCRIPTION_PRICE} {config.SUBSCRIPTION_CURRENCY}.\n\n"
         f"{_SUPPORT}",
-        buttons=[[{"type": "callback", "text": f"Подписаться за {config.SUBSCRIPTION_PRICE} руб.", "payload": "subscribe"}]],
+        buttons=[
+            [{"type": "callback", "text": f"Подписаться за {config.SUBSCRIPTION_PRICE} руб.", "payload": "subscribe"}],
+            [_MARKET_BTN],
+        ],
     )
 
 
@@ -357,7 +365,10 @@ def _check_expired_subscriptions() -> None:
                 user_id,
                 "Ваша подписка на закрытый канал истекла. Вы были удалены из канала.\n\n"
                 f"Чтобы возобновить доступ, оформите новую подписку на {period}.",
-                buttons=[[{"type": "callback", "text": f"Продлить за {config.SUBSCRIPTION_PRICE} руб.", "payload": "renew"}]],
+                buttons=[
+                    [{"type": "callback", "text": f"Продлить за {config.SUBSCRIPTION_PRICE} руб.", "payload": "renew"}],
+                    [_MARKET_BTN],
+                ],
             )
             log.info("Подписка истекла: user_id=%s payment_id=%s", user_id, payment_id)
         except Exception:
