@@ -178,6 +178,61 @@ def get_user(user_id: int) -> dict | None:
     return dict(row) if row else None
 
 
+def get_stats() -> dict:
+    now = datetime.now(timezone.utc)
+    msk = timezone(timedelta(hours=3))
+    today_start = (
+        datetime.now(msk)
+        .replace(hour=0, minute=0, second=0, microsecond=0)
+        .astimezone(timezone.utc)
+    )
+    month_start = today_start.replace(day=1)
+    next_24h = now + timedelta(hours=24)
+
+    with _get_conn() as conn:
+        with _cursor(conn) as cur:
+            cur.execute(
+                "SELECT COUNT(*) FROM subscriptions WHERE status='active' AND expires_at > %s",
+                (now,),
+            )
+            active = cur.fetchone()["count"]
+
+            cur.execute(
+                "SELECT COUNT(*) FROM subscriptions"
+                " WHERE confirmed_at >= %s AND status IN ('active', 'expired')",
+                (today_start,),
+            )
+            new_today = cur.fetchone()["count"]
+
+            cur.execute(
+                "SELECT COUNT(*) FROM subscriptions"
+                " WHERE confirmed_at >= %s AND status IN ('active', 'expired')",
+                (month_start,),
+            )
+            new_month = cur.fetchone()["count"]
+
+            cur.execute(
+                "SELECT COUNT(*) FROM subscriptions"
+                " WHERE confirmed_at IS NOT NULL AND status IN ('active', 'expired')"
+            )
+            total = cur.fetchone()["count"]
+
+            cur.execute(
+                "SELECT COUNT(*) FROM subscriptions"
+                " WHERE status='active' AND expires_at BETWEEN %s AND %s",
+                (now, next_24h),
+            )
+            expiring_soon = cur.fetchone()["count"]
+
+    return {
+        "active": active,
+        "new_today": new_today,
+        "new_month": new_month,
+        "total": total,
+        "expiring_soon": expiring_soon,
+    }
+
+
 def _expiry_from_now() -> datetime:
     now = datetime.now(timezone.utc)
     if config.SUBSCRIPTION_MINUTES is not None:

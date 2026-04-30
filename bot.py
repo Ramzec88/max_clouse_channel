@@ -94,6 +94,8 @@ def _on_message(message: dict) -> None:
 
     if text in ("/start", "/start@"):
         _cmd_start(user_id)
+    elif text == "/stats" and user_id == config.ADMIN_USER_ID:
+        _cmd_stats(user_id)
 
 
 def _on_callback(callback: dict) -> None:
@@ -220,6 +222,22 @@ def _on_user_added(update: dict) -> None:
             [_MARKET_BTN],
         ],
     )
+
+
+def _cmd_stats(user_id: int) -> None:
+    from datetime import datetime, timezone
+    s = db.get_stats()
+    now = datetime.now(timezone.utc)
+    max_api.send_message(
+        user_id,
+        f"Статистика на {now.strftime('%d.%m.%Y %H:%M')} UTC\n\n"
+        f"Активных подписок:  {s['active']}\n"
+        f"Новых сегодня:      {s['new_today']}\n"
+        f"Новых за месяц:     {s['new_month']}\n"
+        f"Всего оплачено:     {s['total']}\n\n"
+        f"Истекают в 24 ч:    {s['expiring_soon']}",
+    )
+    log.info("Статистика запрошена admin user_id=%s", user_id)
 
 
 def _handle_retry_add(user_id: int) -> None:
