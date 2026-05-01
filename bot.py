@@ -96,6 +96,8 @@ def _on_message(message: dict) -> None:
         _cmd_start(user_id)
     elif text == "/stats" and user_id == config.ADMIN_USER_ID:
         _cmd_stats(user_id)
+    elif text == "/members" and user_id == config.ADMIN_USER_ID:
+        _cmd_members(user_id)
 
 
 def _on_callback(callback: dict) -> None:
@@ -242,6 +244,32 @@ def _cmd_stats(user_id: int) -> None:
         f"Истекают в 24 ч:    {s['expiring_soon']}",
     )
     log.info("Статистика запрошена admin user_id=%s", user_id)
+
+
+def _cmd_members(user_id: int) -> None:
+    rows = db.get_active_subscribers_with_info()
+    if not rows:
+        max_api.send_message(user_id, "Активных подписчиков нет.")
+        return
+
+    header = f"Активные подписчики ({len(rows)}), сортировка по дате истечения:\n"
+    lines = []
+    for i, r in enumerate(rows, 1):
+        name = r.get("name") or f"id{r['user_id']}"
+        username = f" (@{r['username']})" if r.get("username") else ""
+        expires = _fmt_date(r["expires_at"])
+        lines.append(f"{i}. {name}{username} — до {expires}")
+
+    # Отправляем кусками по 3500 символов чтобы не превысить лимит MAX
+    chunk = header
+    for line in lines:
+        if len(chunk) + len(line) + 1 > 3500:
+            max_api.send_message(user_id, chunk)
+            chunk = ""
+        chunk += line + "\n"
+    if chunk:
+        max_api.send_message(user_id, chunk)
+    log.info("Список участников запрошен admin user_id=%s", user_id)
 
 
 def _handle_retry_add(user_id: int) -> None:

@@ -178,6 +178,23 @@ def get_user(user_id: int) -> dict | None:
     return dict(row) if row else None
 
 
+def get_active_subscribers_with_info() -> list[dict]:
+    now = datetime.now(timezone.utc)
+    with _get_conn() as conn:
+        with _cursor(conn) as cur:
+            cur.execute(
+                """
+                SELECT s.user_id, s.expires_at, u.name, u.username
+                FROM subscriptions s
+                LEFT JOIN users u ON u.user_id = s.user_id
+                WHERE s.status = 'active' AND s.expires_at > %s
+                ORDER BY s.expires_at ASC
+                """,
+                (now,),
+            )
+            return [dict(r) for r in cur.fetchall()]
+
+
 def get_stats() -> dict:
     now = datetime.now(timezone.utc)
     msk = timezone(timedelta(hours=3))
