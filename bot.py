@@ -202,6 +202,10 @@ def _on_user_added(update: dict) -> None:
     if chat_id != config.MAX_CHANNEL_ID:
         return  # событие из другого чата
 
+    if user_id in config.PROTECTED_USER_IDS:
+        log.info("user_added: user_id=%s — защищённый пользователь, пропускаем", user_id)
+        return
+
     if db.get_active_subscription(user_id):
         log.info("user_added: user_id=%s — подписка активна, пропускаем", user_id)
         return
@@ -372,6 +376,11 @@ def _check_expired_subscriptions() -> None:
         user_id: int = row["user_id"]
         channel_id: int = row["channel_id"]
         try:
+            if user_id in config.PROTECTED_USER_IDS:
+                log.info("Истечение: user_id=%s — защищённый пользователь, пропускаем кик", user_id)
+                db.mark_expired(payment_id)
+                continue
+
             removed = max_api.remove_member_from_channel(channel_id, user_id)
             log.info("Удаление из канала: user_id=%s removed=%s", user_id, removed)
 
