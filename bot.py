@@ -98,6 +98,8 @@ def _on_message(message: dict) -> None:
         _cmd_stats(user_id)
     elif text == "/members" and user_id == config.ADMIN_USER_ID:
         _cmd_members(user_id)
+    elif text.startswith("/find ") and user_id == config.ADMIN_USER_ID:
+        _cmd_find(user_id, text[6:].strip())
 
 
 def _on_callback(callback: dict) -> None:
@@ -185,7 +187,7 @@ def _handle_email_input(user_id: int, text: str) -> None:
         max_api.send_message(user_id, f"Не удалось создать платёж. Попробуйте позже.\n\n{_SUPPORT}")
         return
 
-    db.save_pending_payment(user_id, payment["payment_id"], config.MAX_CHANNEL_ID)
+    db.save_pending_payment(user_id, payment["payment_id"], config.MAX_CHANNEL_ID, email)
     max_api.send_message(
         user_id,
         f"Оплатите подписку по ссылке:\n{payment['confirmation_url']}\n\n"
@@ -244,6 +246,40 @@ def _cmd_stats(user_id: int) -> None:
         f"Истекают в 24 ч:    {s['expiring_soon']}",
     )
     log.info("Статистика запрошена admin user_id=%s", user_id)
+
+
+def _cmd_find(admin_id: int, email: str) -> None:
+    if not email:
+        max_api.send_message(admin_id, "Использование: /find email@example.com")
+        return
+
+    rows = db.find_by_email(email)
+    if not rows:
+        max_api.send_message(admin_id, f"Записей с email {email} не найдено.")
+        return
+
+    lines = [f"Результаты по email: {email}\n"]
+    for r in rows:
+        name = r.get("name") or f"id{r['user_id']}"
+        username = f" (@{r['username']})" if r.get("username") else ""
+        status_ru = {
+            "active": "активна",
+            "expired": "истекла",
+            "pending": "ожидает оплаты",
+            "canceled": "отменена",
+        }.get(r["status"], r["status"])
+
+        lines.append(
+            f"Пользователь: {name}{username}\n"
+            f"user_id: {r['user_id']}\n"
+            f"Статус: {status_ru}\n"
+            + (f"Оплачено: {_fmt_date(r['confirmed_at'])}\n" if r.get("confirmed_at") else "")
+            + (f"Истекает: {_fmt_date(r['expires_at'])}\n" if r.get("expires_at") else "")
+            + f"payment_id: {r['payment_id']}\n"
+        )
+
+    max_api.send_message(admin_id, "\n".join(lines))
+    log.info("Поиск по email=%s запрошен admin user_id=%s", email, admin_id)
 
 
 def _cmd_members(user_id: int) -> None:

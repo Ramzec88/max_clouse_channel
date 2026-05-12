@@ -15,12 +15,14 @@ CREATE TABLE IF NOT EXISTS subscriptions (
     payment_id   TEXT   NOT NULL UNIQUE,
     status       TEXT   NOT NULL DEFAULT 'pending',
     channel_id   BIGINT NOT NULL,
+    email        TEXT,
     created_at   TIMESTAMPTZ NOT NULL,
     expires_at   TIMESTAMPTZ,
     confirmed_at TIMESTAMPTZ
 );
 CREATE INDEX IF NOT EXISTS idx_sub_user   ON subscriptions(user_id);
 CREATE INDEX IF NOT EXISTS idx_sub_status ON subscriptions(status);
+CREATE INDEX IF NOT EXISTS idx_sub_email  ON subscriptions(email);
 
 CREATE TABLE IF NOT EXISTS users (
     user_id    BIGINT PRIMARY KEY,
@@ -30,6 +32,9 @@ CREATE TABLE IF NOT EXISTS users (
 );
 """
 
+# Добавляем колонку email если её нет (для уже существующих БД)
+_MIGRATE = "ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS email TEXT;"
+
 
 def init_db() -> None:
     global _pool
@@ -37,6 +42,7 @@ def init_db() -> None:
     with _get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute(DDL)
+            cur.execute(_MIGRATE)
         conn.commit()
 
 
@@ -53,14 +59,14 @@ def _cursor(conn):
     return conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
 
-def save_pending_payment(user_id: int, payment_id: str, channel_id: int) -> None:
+def save_pending_payment(user_id: int, payment_id: str, channel_id: int, email: str) -> None:
     now = datetime.now(timezone.utc)
     with _get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "INSERT INTO subscriptions (user_id, payment_id, status, channel_id, created_at)"
-                " VALUES (%s, %s, 'pending', %s, %s)",
-                (user_id, payment_id, channel_id, now),
+                "INSERT INTO subscriptions (user_id, payment_id, status, channel_id, email, created_at)"
+                " VALUES (%s, %s, 'pending', %s, %s, %s)",
+                (user_id, payment_id, channel_id, email, now),
             )
         conn.commit()
 
@@ -176,6 +182,24 @@ def get_user(user_id: int) -> dict | None:
             cur.execute("SELECT * FROM users WHERE user_id = %s", (user_id,))
             row = cur.fetchone()
     return dict(row) if row else None
+
+
+def find_by_email(email: str) -> list[dict]:
+    with _get_conn() as conn:
+        with _cursor(conn) as cur:
+            cur.execute(
+                """
+                SELECT s.user_id, s.payment_id, s.status, s.email,
+                       s.created_at, s.confirmed_at, s.expires_at,
+                       u.name, u.username
+                FROM subscriptions s
+                LEFT JOIN users u ON u.user_id = s.user_id
+                WHERE lower(s.email) = lower(%s)
+                ORDER BY s.created_at DESC
+                """,
+                (email,),
+            )
+            return [dict(r) for r in cur.fetchall()]
 
 
 def get_active_subscribers_with_info() -> list[dict]:
