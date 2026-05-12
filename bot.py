@@ -111,25 +111,30 @@ def _on_callback(callback: dict) -> None:
         _handle_subscribe(user_id)
     elif payload == "retry_add":
         _handle_retry_add(user_id)
+    elif payload == "get_link":
+        _handle_get_link(user_id)
 
 
 def _cmd_start(user_id: int) -> None:
     sub = db.get_active_subscription(user_id)
     if sub:
-        # Есть активная подписка — пробуем добавить (на случай если ещё не в канале)
         added = max_api.add_member_to_channel(config.MAX_CHANNEL_ID, user_id)
         if added:
             max_api.send_message(
                 user_id,
                 f"Ваша подписка активна до {_fmt_date(sub['expires_at'])}.\n"
                 "Канал доступен в ваших чатах MAX.",
+                buttons=[[{"type": "callback", "text": "Получить ссылку в канал", "payload": "get_link"}]],
             )
         else:
             max_api.send_message(
                 user_id,
                 f"Ваша подписка активна до {_fmt_date(sub['expires_at'])}.\n\n"
                 + _PRIVACY_MSG,
-                buttons=[[{"type": "callback", "text": "Попробовать ещё раз", "payload": "retry_add"}]],
+                buttons=[
+                    [{"type": "callback", "text": "Попробовать ещё раз", "payload": "retry_add"}],
+                    [{"type": "callback", "text": "Получить ссылку в канал", "payload": "get_link"}],
+                ],
             )
         return
 
@@ -306,6 +311,36 @@ def _cmd_members(user_id: int) -> None:
     if chunk:
         max_api.send_message(user_id, chunk)
     log.info("Список участников запрошен admin user_id=%s", user_id)
+
+
+def _handle_get_link(user_id: int) -> None:
+    sub = db.get_active_subscription(user_id)
+    if not sub:
+        max_api.send_message(user_id, f"Активная подписка не найдена. Напишите /start.\n\n{_SUPPORT}")
+        return
+
+    # Сначала пробуем добавить через API — вдруг настройки изменились
+    added = max_api.add_member_to_channel(config.MAX_CHANNEL_ID, user_id)
+    if added:
+        max_api.send_message(
+            user_id,
+            "Готово! Вы добавлены в канал. Откройте MAX — канал появился в ваших чатах.",
+        )
+        return
+
+    # Иначе отправляем актуальную ссылку-приглашение
+    invite_link = max_api.get_channel_invite_link(config.MAX_CHANNEL_ID)
+    if invite_link:
+        max_api.send_message(
+            user_id,
+            "Ваша персональная ссылка для вступления в канал:\n\n"
+            f"{invite_link}\n\n"
+            "Ссылка актуальна прямо сейчас. Если не сработает — нажмите кнопку ещё раз.",
+        )
+        log.info("get_link отправлена user_id=%s", user_id)
+    else:
+        max_api.send_message(user_id, f"Не удалось получить ссылку. Попробуйте позже.\n\n{_SUPPORT}")
+        log.warning("get_link: не удалось получить ссылку для user_id=%s", user_id)
 
 
 def _handle_retry_add(user_id: int) -> None:
