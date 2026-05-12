@@ -22,7 +22,6 @@ CREATE TABLE IF NOT EXISTS subscriptions (
 );
 CREATE INDEX IF NOT EXISTS idx_sub_user   ON subscriptions(user_id);
 CREATE INDEX IF NOT EXISTS idx_sub_status ON subscriptions(status);
-CREATE INDEX IF NOT EXISTS idx_sub_email  ON subscriptions(email);
 
 CREATE TABLE IF NOT EXISTS users (
     user_id    BIGINT PRIMARY KEY,
@@ -33,7 +32,10 @@ CREATE TABLE IF NOT EXISTS users (
 """
 
 # Добавляем колонку email если её нет (для уже существующих БД)
-_MIGRATE = "ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS email TEXT;"
+_MIGRATE = """
+ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS email TEXT;
+CREATE INDEX IF NOT EXISTS idx_sub_email ON subscriptions(email);
+"""
 
 
 def init_db() -> None:
