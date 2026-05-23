@@ -100,6 +100,8 @@ def _on_message(message: dict) -> None:
         _cmd_members(user_id)
     elif text.startswith("/find ") and user_id == config.ADMIN_USER_ID:
         _cmd_find(user_id, text[6:].strip())
+    elif text.startswith("/findname ") and user_id == config.ADMIN_USER_ID:
+        _cmd_findname(user_id, text[10:].strip())
 
 
 def _on_callback(callback: dict) -> None:
@@ -253,37 +255,54 @@ def _cmd_stats(user_id: int) -> None:
     log.info("Статистика запрошена admin user_id=%s", user_id)
 
 
+def _cmd_findname(admin_id: int, query: str) -> None:
+    if not query:
+        max_api.send_message(admin_id, "Использование: /findname Татьяна")
+        return
+    rows = db.find_by_name(query)
+    if not rows:
+        max_api.send_message(admin_id, f"Пользователей с именем «{query}» не найдено.")
+        return
+    _send_subscription_rows(admin_id, rows, header=f"Результаты по имени «{query}»:")
+
+
+def _format_subscription_row(r: dict) -> str:
+    name = r.get("name") or f"id{r['user_id']}"
+    username = f" (@{r['username']})" if r.get("username") else ""
+    status_ru = {
+        "active": "активна",
+        "expired": "истекла",
+        "pending": "ожидает оплаты",
+        "canceled": "отменена",
+    }.get(r["status"], r["status"])
+    return (
+        f"Пользователь: {name}{username}\n"
+        f"user_id: {r['user_id']}\n"
+        f"Статус: {status_ru}\n"
+        + (f"Email: {r['email']}\n" if r.get("email") else "")
+        + (f"Оплачено: {_fmt_date(r['confirmed_at'])}\n" if r.get("confirmed_at") else "")
+        + (f"Истекает: {_fmt_date(r['expires_at'])}\n" if r.get("expires_at") else "")
+        + f"payment_id: {r['payment_id']}"
+    )
+
+
+def _send_subscription_rows(admin_id: int, rows: list[dict], header: str) -> None:
+    lines = [header, ""]
+    for r in rows:
+        lines.append(_format_subscription_row(r))
+        lines.append("")
+    max_api.send_message(admin_id, "\n".join(lines).strip())
+
+
 def _cmd_find(admin_id: int, email: str) -> None:
     if not email:
         max_api.send_message(admin_id, "Использование: /find email@example.com")
         return
-
     rows = db.find_by_email(email)
     if not rows:
         max_api.send_message(admin_id, f"Записей с email {email} не найдено.")
         return
-
-    lines = [f"Результаты по email: {email}\n"]
-    for r in rows:
-        name = r.get("name") or f"id{r['user_id']}"
-        username = f" (@{r['username']})" if r.get("username") else ""
-        status_ru = {
-            "active": "активна",
-            "expired": "истекла",
-            "pending": "ожидает оплаты",
-            "canceled": "отменена",
-        }.get(r["status"], r["status"])
-
-        lines.append(
-            f"Пользователь: {name}{username}\n"
-            f"user_id: {r['user_id']}\n"
-            f"Статус: {status_ru}\n"
-            + (f"Оплачено: {_fmt_date(r['confirmed_at'])}\n" if r.get("confirmed_at") else "")
-            + (f"Истекает: {_fmt_date(r['expires_at'])}\n" if r.get("expires_at") else "")
-            + f"payment_id: {r['payment_id']}\n"
-        )
-
-    max_api.send_message(admin_id, "\n".join(lines))
+    _send_subscription_rows(admin_id, rows, header=f"Результаты по email: {email}")
     log.info("Поиск по email=%s запрошен admin user_id=%s", email, admin_id)
 
 

@@ -186,6 +186,25 @@ def get_user(user_id: int) -> dict | None:
     return dict(row) if row else None
 
 
+def find_by_name(query: str) -> list[dict]:
+    pattern = f"%{query.lower()}%"
+    with _get_conn() as conn:
+        with _cursor(conn) as cur:
+            cur.execute(
+                """
+                SELECT s.user_id, s.payment_id, s.status, s.email,
+                       s.created_at, s.confirmed_at, s.expires_at,
+                       u.name, u.username
+                FROM subscriptions s
+                LEFT JOIN users u ON u.user_id = s.user_id
+                WHERE lower(u.name) LIKE %s OR lower(u.username) LIKE %s
+                ORDER BY s.created_at DESC
+                """,
+                (pattern, pattern),
+            )
+            return [dict(r) for r in cur.fetchall()]
+
+
 def find_by_email(email: str) -> list[dict]:
     with _get_conn() as conn:
         with _cursor(conn) as cur:
