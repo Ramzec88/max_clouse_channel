@@ -438,9 +438,11 @@ def _on_payment_succeeded(payment_id: str, user_id: int) -> None:
     expires = _fmt_date(sub["expires_at"]) if sub else "—"
     total_count, user_count = db.get_subscription_counts(user_id)
     returning = f"\n♻️ {user_count}-я подписка этого пользователя" if user_count > 1 else ""
+    email = sub.get("email", "—") if sub else "—"
     _notify_admin(
         f"Новая подписка #{total_count}!{returning}\n"
         f"{_user_label(user_id)}\n"
+        f"Email: {email}\n"
         f"payment_id: {payment_id}\n"
         f"Действует до: {expires}"
     )
