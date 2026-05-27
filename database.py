@@ -240,6 +240,24 @@ def get_active_subscribers_with_info() -> list[dict]:
             return [dict(r) for r in cur.fetchall()]
 
 
+def get_subscription_counts(user_id: int) -> tuple[int, int]:
+    """Возвращает (всего подписок в системе, подписок у этого пользователя)."""
+    with _get_conn() as conn:
+        with _cursor(conn) as cur:
+            cur.execute(
+                "SELECT COUNT(*) FROM subscriptions"
+                " WHERE confirmed_at IS NOT NULL AND status IN ('active', 'expired')"
+            )
+            total = cur.fetchone()["count"]
+            cur.execute(
+                "SELECT COUNT(*) FROM subscriptions"
+                " WHERE user_id = %s AND confirmed_at IS NOT NULL AND status IN ('active', 'expired')",
+                (user_id,),
+            )
+            user_count = cur.fetchone()["count"]
+    return total, user_count
+
+
 def get_stats() -> dict:
     now = datetime.now(timezone.utc)
     msk = timezone(timedelta(hours=3))
