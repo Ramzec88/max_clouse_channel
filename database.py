@@ -31,10 +31,11 @@ CREATE TABLE IF NOT EXISTS users (
 );
 """
 
-# Добавляем колонку email если её нет (для уже существующих БД)
+# Добавляем колонки если их нет (для уже существующих БД)
 _MIGRATE = """
 ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS email TEXT;
 CREATE INDEX IF NOT EXISTS idx_sub_email ON subscriptions(email);
+ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS amount NUMERIC(10,2);
 """
 
 
@@ -45,6 +46,11 @@ def init_db() -> None:
         with conn.cursor() as cur:
             cur.execute(DDL)
             cur.execute(_MIGRATE)
+            # Старые записи без суммы — считаем что цена была текущей (для финансовой статистики)
+            cur.execute(
+                "UPDATE subscriptions SET amount = %s WHERE amount IS NULL",
+                (float(config.SUBSCRIPTION_PRICE),),
+            )
         conn.commit()
 
 
@@ -61,14 +67,14 @@ def _cursor(conn):
     return conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
 
-def save_pending_payment(user_id: int, payment_id: str, channel_id: int, email: str) -> None:
+def save_pending_payment(user_id: int, payment_id: str, channel_id: int, email: str, amount: float) -> None:
     now = datetime.now(timezone.utc)
     with _get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "INSERT INTO subscriptions (user_id, payment_id, status, channel_id, email, created_at)"
-                " VALUES (%s, %s, 'pending', %s, %s, %s)",
-                (user_id, payment_id, channel_id, email, now),
+                "INSERT INTO subscriptions (user_id, payment_id, status, channel_id, email, amount, created_at)"
+                " VALUES (%s, %s, 'pending', %s, %s, %s, %s)",
+                (user_id, payment_id, channel_id, email, amount, now),
             )
         conn.commit()
 
@@ -310,6 +316,127 @@ def get_stats() -> dict:
         "new_month": new_month,
         "total": total,
         "expiring_soon": expiring_soon,
+    }
+
+
+def get_finance_stats() -> dict:
+    now = datetime.now(timezone.utc)
+    msk = timezone(timedelta(hours=3))
+    today_start = (
+        datetime.now(msk)
+        .replace(hour=0, minute=0, second=0, microsecond=0)
+        .astimezone(timezone.utc)
+    )
+    week_start = today_start - timedelta(days=7)
+    month_start = today_start.replace(day=1)
+
+    with _get_conn() as conn:
+        with _cursor(conn) as cur:
+            cur.execute(
+                "SELECT COALESCE(SUM(amount), 0) AS s FROM subscriptions"
+                " WHERE status='active' AND expires_at > %s",
+                (now,),
+            )
+            active_revenue = float(cur.fetchone()["s"])
+
+            cur.execute(
+                "SELECT COALESCE(SUM(amount), 0) AS s FROM subscriptions"
+                " WHERE confirmed_at >= %s AND status IN ('active', 'expired')",
+                (today_start,),
+            )
+            revenue_today = float(cur.fetchone()["s"])
+
+            cur.execute(
+                "SELECT COALESCE(SUM(amount), 0) AS s FROM subscriptions"
+                " WHERE confirmed_at >= %s AND status IN ('active', 'expired')",
+                (week_start,),
+            )
+            revenue_week = float(cur.fetchone()["s"])
+
+            cur.execute(
+                "SELECT COALESCE(SUM(amount), 0) AS s FROM subscriptions"
+                " WHERE confirmed_at >= %s AND status IN ('active', 'expired')",
+                (month_start,),
+            )
+            revenue_month = float(cur.fetchone()["s"])
+
+            cur.execute(
+                """
+                SELECT AVG(user_total) AS avg_ltv FROM (
+                    SELECT user_id, SUM(amount) AS user_total
+                    FROM subscriptions
+                    WHERE confirmed_at IS NOT NULL
+                    GROUP BY user_id
+                ) t
+                """
+            )
+            avg_ltv_row = cur.fetchone()["avg_ltv"]
+            avg_ltv = float(avg_ltv_row) if avg_ltv_row is not None else 0.0
+
+    months = config.SUBSCRIPTION_MONTHS if config.SUBSCRIPTION_MINUTES is None else 1
+    mrr = active_revenue / months
+
+    return {
+        "mrr": mrr,
+        "revenue_today": revenue_today,
+        "revenue_week": revenue_week,
+        "revenue_month": revenue_month,
+        "avg_ltv": avg_ltv,
+    }
+
+
+def get_retention_stats(days: int = 30) -> dict:
+    now = datetime.now(timezone.utc)
+    period_start = now - timedelta(days=days)
+
+    with _get_conn() as conn:
+        with _cursor(conn) as cur:
+            cur.execute(
+                """
+                WITH cohort AS (
+                    SELECT user_id, expires_at
+                    FROM subscriptions
+                    WHERE status = 'expired' AND expires_at BETWEEN %s AND %s
+                )
+                SELECT
+                    COUNT(*) AS total,
+                    SUM(CASE WHEN EXISTS (
+                        SELECT 1 FROM subscriptions s2
+                        WHERE s2.user_id = cohort.user_id
+                          AND s2.confirmed_at IS NOT NULL
+                          AND s2.confirmed_at > cohort.expires_at
+                          AND s2.confirmed_at <= cohort.expires_at + INTERVAL '7 days'
+                    ) THEN 1 ELSE 0 END) AS renewed
+                FROM cohort
+                """,
+                (period_start, now),
+            )
+            row = cur.fetchone()
+            expired_count = row["total"] or 0
+            renewed_count = row["renewed"] or 0
+
+            cur.execute(
+                """
+                SELECT AVG(cnt) AS avg_periods FROM (
+                    SELECT user_id, COUNT(*) AS cnt
+                    FROM subscriptions
+                    WHERE confirmed_at IS NOT NULL
+                    GROUP BY user_id
+                ) t
+                """
+            )
+            avg_periods_row = cur.fetchone()["avg_periods"]
+            avg_periods = float(avg_periods_row) if avg_periods_row is not None else 0.0
+
+    renewal_rate = (renewed_count / expired_count * 100) if expired_count else None
+    churn_rate = (100 - renewal_rate) if renewal_rate is not None else None
+
+    return {
+        "expired_count": expired_count,
+        "renewed_count": renewed_count,
+        "renewal_rate": renewal_rate,
+        "churn_rate": churn_rate,
+        "avg_periods": avg_periods,
     }
 
 

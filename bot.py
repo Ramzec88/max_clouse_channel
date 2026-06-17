@@ -194,7 +194,9 @@ def _handle_email_input(user_id: int, text: str) -> None:
         max_api.send_message(user_id, f"Не удалось создать платёж. Попробуйте позже.\n\n{_SUPPORT}")
         return
 
-    db.save_pending_payment(user_id, payment["payment_id"], config.MAX_CHANNEL_ID, email)
+    db.save_pending_payment(
+        user_id, payment["payment_id"], config.MAX_CHANNEL_ID, email, float(config.SUBSCRIPTION_PRICE)
+    )
     max_api.send_message(
         user_id,
         f"Оплатите подписку по ссылке:\n{payment['confirmation_url']}\n\n"
@@ -242,15 +244,38 @@ def _on_user_added(update: dict) -> None:
 def _cmd_stats(user_id: int) -> None:
     from datetime import datetime, timezone
     s = db.get_stats()
+    fin = db.get_finance_stats()
+    ret = db.get_retention_stats()
     now = datetime.now(timezone.utc)
+    cur = config.SUBSCRIPTION_CURRENCY
+
+    if ret["renewal_rate"] is not None:
+        renewal_line = f"{ret['renewal_rate']:.0f}% ({ret['renewed_count']} из {ret['expired_count']})"
+        churn_line = f"{ret['churn_rate']:.0f}%"
+    else:
+        renewal_line = "нет данных за 30 дней"
+        churn_line = "нет данных за 30 дней"
+
     max_api.send_message(
         user_id,
         f"Статистика на {now.strftime('%d.%m.%Y %H:%M')} UTC\n\n"
+        f"── Текущий момент ──\n"
         f"Активных подписок:  {s['active']}\n"
         f"Новых сегодня:      {s['new_today']}\n"
         f"Новых за месяц:     {s['new_month']}\n"
-        f"Всего оплачено:     {s['total']}\n\n"
-        f"Истекают в 24 ч:    {s['expiring_soon']}",
+        f"Всего оплачено:     {s['total']}\n"
+        f"Истекают в 24 ч:    {s['expiring_soon']}\n\n"
+        f"── Финансы ──\n"
+        f"MRR:                {fin['mrr']:.0f} {cur}\n"
+        f"Выручка сегодня:    {fin['revenue_today']:.0f} {cur}\n"
+        f"Выручка за 7 дней:  {fin['revenue_week']:.0f} {cur}\n"
+        f"Выручка за 30 дней: {fin['revenue_month']:.0f} {cur}\n"
+        f"Средний LTV:        {fin['avg_ltv']:.0f} {cur}\n\n"
+        f"── Удержание (за 30 дней) ──\n"
+        f"Истекло подписок:   {ret['expired_count']}\n"
+        f"Продлили:           {renewal_line}\n"
+        f"Отток (churn):      {churn_line}\n"
+        f"Среднее число оплат на подписчика: {ret['avg_periods']:.1f}",
     )
     log.info("Статистика запрошена admin user_id=%s", user_id)
 
