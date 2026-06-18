@@ -155,6 +155,16 @@ def mark_expired(payment_id: str) -> None:
         conn.commit()
 
 
+def mark_refunded(payment_id: str) -> None:
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE subscriptions SET status='refunded' WHERE payment_id=%s",
+                (payment_id,),
+            )
+        conn.commit()
+
+
 def get_active_subscriptions_all() -> list[dict]:
     now = datetime.now(timezone.utc)
     with _get_conn() as conn:
@@ -365,7 +375,7 @@ def get_finance_stats() -> dict:
                 SELECT AVG(user_total) AS avg_ltv FROM (
                     SELECT user_id, SUM(amount) AS user_total
                     FROM subscriptions
-                    WHERE confirmed_at IS NOT NULL
+                    WHERE confirmed_at IS NOT NULL AND status IN ('active', 'expired')
                     GROUP BY user_id
                 ) t
                 """
@@ -404,6 +414,7 @@ def get_retention_stats(days: int = 30) -> dict:
                         SELECT 1 FROM subscriptions s2
                         WHERE s2.user_id = cohort.user_id
                           AND s2.confirmed_at IS NOT NULL
+                          AND s2.status IN ('active', 'expired')
                           AND s2.confirmed_at > cohort.expires_at
                           AND s2.confirmed_at <= cohort.expires_at + INTERVAL '7 days'
                     ) THEN 1 ELSE 0 END) AS renewed
@@ -420,7 +431,7 @@ def get_retention_stats(days: int = 30) -> dict:
                 SELECT AVG(cnt) AS avg_periods FROM (
                     SELECT user_id, COUNT(*) AS cnt
                     FROM subscriptions
-                    WHERE confirmed_at IS NOT NULL
+                    WHERE confirmed_at IS NOT NULL AND status IN ('active', 'expired')
                     GROUP BY user_id
                 ) t
                 """

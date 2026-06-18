@@ -102,6 +102,8 @@ def _on_message(message: dict) -> None:
         _cmd_find(user_id, text[6:].strip())
     elif text.startswith("/findname ") and user_id == config.ADMIN_USER_ID:
         _cmd_findname(user_id, text[10:].strip())
+    elif text.startswith("/refund ") and user_id == config.ADMIN_USER_ID:
+        _cmd_refund(user_id, text[8:].strip())
 
 
 def _on_callback(callback: dict) -> None:
@@ -299,6 +301,7 @@ def _format_subscription_row(r: dict) -> str:
         "expired": "истекла",
         "pending": "ожидает оплаты",
         "canceled": "отменена",
+        "refunded": "возврат оформлен",
     }.get(r["status"], r["status"])
     return (
         f"Пользователь: {name}{username}\n"
@@ -329,6 +332,43 @@ def _cmd_find(admin_id: int, email: str) -> None:
         return
     _send_subscription_rows(admin_id, rows, header=f"Результаты по email: {email}")
     log.info("Поиск по email=%s запрошен admin user_id=%s", email, admin_id)
+
+
+def _cmd_refund(admin_id: int, identifier: str) -> None:
+    if not identifier:
+        max_api.send_message(admin_id, "Использование: /refund user_id или /refund email@example.com")
+        return
+
+    if identifier.isdigit():
+        user_id = int(identifier)
+    else:
+        rows = db.find_by_email(identifier)
+        active_rows = [r for r in rows if r["status"] == "active"]
+        if not active_rows:
+            max_api.send_message(admin_id, f"Активная подписка с email {identifier} не найдена.")
+            return
+        user_id = active_rows[0]["user_id"]
+
+    sub = db.get_active_subscription(user_id)
+    if not sub:
+        max_api.send_message(admin_id, f"Активная подписка для user_id={user_id} не найдена.")
+        return
+
+    db.mark_refunded(sub["payment_id"])
+    removed = max_api.remove_member_from_channel(config.MAX_CHANNEL_ID, user_id)
+
+    max_api.send_message(
+        user_id,
+        "Ваша подписка отменена, доступ к каналу закрыт.\n\n"
+        f"{_SUPPORT}",
+    )
+
+    max_api.send_message(
+        admin_id,
+        f"Готово. user_id={user_id} исключён из канала (removed={removed}), "
+        f"подписка payment_id={sub['payment_id']} помечена как возврат.",
+    )
+    log.info("Refund: user_id=%s payment_id=%s removed=%s admin=%s", user_id, sub['payment_id'], removed, admin_id)
 
 
 def _cmd_members(user_id: int) -> None:
