@@ -10,19 +10,22 @@ BASE_URL = "https://platform-api.max.ru"
 log = logging.getLogger(__name__)
 
 _CERTS_DIR = os.path.join(os.path.dirname(__file__), "certs")
-_RUSSIAN_CA = os.path.join(_CERTS_DIR, "russian_trusted_root_ca.pem")
+_RUSSIAN_ROOT = os.path.join(_CERTS_DIR, "russian_trusted_root_ca.pem")
+_RUSSIAN_SUB = os.path.join(_CERTS_DIR, "russian_trusted_sub_ca.pem")
 _COMBINED = os.path.join(_CERTS_DIR, "ca_bundle.pem")
 
 
 def _build_ca_bundle() -> str:
-    if not os.path.exists(_RUSSIAN_CA):
-        log.warning("Russian Trusted Root CA not found at %s — using default certifi bundle", _RUSSIAN_CA)
+    extras = [p for p in (_RUSSIAN_ROOT, _RUSSIAN_SUB) if os.path.exists(p)]
+    if not extras:
+        log.warning("Russian CA certs not found in certs/ — using default certifi bundle")
         return certifi.where()
     os.makedirs(_CERTS_DIR, exist_ok=True)
     with open(_COMBINED, "wb") as out:
         out.write(open(certifi.where(), "rb").read())
-        out.write(open(_RUSSIAN_CA, "rb").read())
-    log.info("CA bundle built: certifi + Russian Trusted Root CA -> %s", _COMBINED)
+        for path in extras:
+            out.write(open(path, "rb").read())
+    log.info("CA bundle built: certifi + %d Russian CA(s) -> %s", len(extras), _COMBINED)
     return _COMBINED
 
 
