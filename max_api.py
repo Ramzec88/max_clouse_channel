@@ -1,11 +1,34 @@
 import logging
+import os
 
+import certifi
 import requests
 
 import config
 
 BASE_URL = "https://platform-api.max.ru"
 log = logging.getLogger(__name__)
+
+_CERTS_DIR = os.path.join(os.path.dirname(__file__), "certs")
+_RUSSIAN_CA = os.path.join(_CERTS_DIR, "russian_trusted_root_ca.pem")
+_COMBINED = os.path.join(_CERTS_DIR, "ca_bundle.pem")
+
+
+def _build_ca_bundle() -> str:
+    if not os.path.exists(_RUSSIAN_CA):
+        log.warning("Russian Trusted Root CA not found at %s — using default certifi bundle", _RUSSIAN_CA)
+        return certifi.where()
+    os.makedirs(_CERTS_DIR, exist_ok=True)
+    with open(_COMBINED, "wb") as out:
+        out.write(open(certifi.where(), "rb").read())
+        out.write(open(_RUSSIAN_CA, "rb").read())
+    log.info("CA bundle built: certifi + Russian Trusted Root CA -> %s", _COMBINED)
+    return _COMBINED
+
+
+_CA_BUNDLE = _build_ca_bundle()
+_session = requests.Session()
+_session.verify = _CA_BUNDLE
 
 
 def _url(path: str) -> str:
@@ -25,7 +48,7 @@ def send_message(user_id: int, text: str, buttons: list[list[dict]] | None = Non
                 "payload": {"buttons": buttons},
             }
         ]
-    resp = requests.post(
+    resp = _session.post(
         _url("/messages"),
         params={"user_id": user_id},
         headers=_headers(),
@@ -37,7 +60,7 @@ def send_message(user_id: int, text: str, buttons: list[list[dict]] | None = Non
 
 
 def add_member_to_channel(chat_id: int, user_id: int) -> bool:
-    resp = requests.post(
+    resp = _session.post(
         _url(f"/chats/{chat_id}/members"),
         headers=_headers(),
         json={"user_ids": [user_id]},
@@ -57,7 +80,7 @@ def add_member_to_channel(chat_id: int, user_id: int) -> bool:
 
 
 def remove_member_from_channel(chat_id: int, user_id: int) -> bool:
-    resp = requests.delete(
+    resp = _session.delete(
         _url(f"/chats/{chat_id}/members"),
         params={"user_id": user_id},
         headers=_headers(),
@@ -71,7 +94,7 @@ def remove_member_from_channel(chat_id: int, user_id: int) -> bool:
 
 
 def get_channel_invite_link(chat_id: int) -> str | None:
-    resp = requests.get(
+    resp = _session.get(
         _url(f"/chats/{chat_id}"),
         headers=_headers(),
         timeout=10,
@@ -86,7 +109,7 @@ def get_updates(marker: int | None = None, timeout: int = 30) -> dict:
     params: dict = {"timeout": timeout}
     if marker is not None:
         params["marker"] = marker
-    resp = requests.get(
+    resp = _session.get(
         _url("/updates"),
         params=params,
         headers=_headers(),
