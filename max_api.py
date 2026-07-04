@@ -6,7 +6,7 @@ import requests
 
 import config
 
-BASE_URL = "https://platform-api.max.ru"
+BASE_URL = "https://platform-api2.max.ru"
 log = logging.getLogger(__name__)
 
 _CERTS_DIR = os.path.join(os.path.dirname(__file__), "certs")
