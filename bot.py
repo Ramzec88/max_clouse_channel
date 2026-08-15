@@ -568,6 +568,14 @@ def _check_expired_subscriptions() -> None:
                 db.mark_expired(payment_id)
                 continue
 
+            if db.get_active_subscription(user_id):
+                log.info(
+                    "Истечение: user_id=%s уже продлил подписку — пропускаем кик, помечаем старую запись",
+                    user_id,
+                )
+                db.mark_expired(payment_id)
+                continue
+
             removed = max_api.remove_member_from_channel(channel_id, user_id)
             log.info("Удаление из канала: user_id=%s removed=%s", user_id, removed)
 
