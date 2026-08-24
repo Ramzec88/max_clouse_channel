@@ -27,6 +27,12 @@ _PRIVACY_MSG = (
     f"{_SUPPORT}"
 )
 
+_JOIN_HINT = (
+    "\n\nВажно: после перехода по ссылке нажмите «Присоединиться» / «Вступить» "
+    "прямо в MAX. Если просто открыть чат и не нажать эту кнопку, вы останетесь "
+    "в режиме предпросмотра — без доступа к материалам канала."
+)
+
 # user_id → "waiting_email"
 _user_state: dict[int, str] = {}
 
@@ -418,7 +424,8 @@ def _handle_get_link(user_id: int) -> None:
         max_api.send_message(
             user_id,
             "Ваша персональная ссылка для вступления в канал:\n\n"
-            f"{invite_link}\n\n"
+            f"{invite_link}"
+            f"{_JOIN_HINT}\n\n"
             "Ссылка актуальна прямо сейчас. Если не сработает — нажмите кнопку ещё раз.",
         )
         log.info("get_link отправлена user_id=%s", user_id)
@@ -528,7 +535,11 @@ def _on_payment_succeeded(payment_id: str, user_id: int) -> None:
                 "Оплата прошла успешно!\n\n"
                 "Ваши настройки приватности не позволяют добавить вас автоматически. "
                 "Вступите по персональной ссылке:\n\n"
-                f"{invite_link}\n\n"
+                f"{invite_link}"
+                f"{_JOIN_HINT}\n\n"
+                "Чтобы в следующий раз (например, при продлении) доступ открывался "
+                "автоматически: Настройки MAX → Конфиденциальность → "
+                "Кто может добавлять в группы → Все\n\n"
                 f"{_SUPPORT}",
             )
         else:
@@ -537,6 +548,10 @@ def _on_payment_succeeded(payment_id: str, user_id: int) -> None:
                 f"Оплата прошла успешно, но не удалось добавить вас в канал.\n\n{_SUPPORT}",
             )
         log.warning("Подписка активирована (invite-link fallback): user_id=%s payment_id=%s", user_id, payment_id)
+        _notify_admin(
+            f"⚠️ Не удалось автоматически добавить в канал (вероятно приватность): "
+            f"{_user_label(user_id)}\npayment_id={payment_id}"
+        )
 
 
 def _on_payment_canceled(payment_id: str, user_id: int) -> None:

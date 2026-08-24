@@ -74,7 +74,8 @@ def add_member_to_channel(chat_id: int, user_id: int) -> bool:
         log.warning("add_member http error: %s %s", resp.status_code, resp.text)
         return False
     data = resp.json()
-    if not data.get("success", True) and user_id in data.get("failed_user_ids", []):
+    failed_ids = {str(x) for x in data.get("failed_user_ids", [])}
+    if not data.get("success", True) or str(user_id) in failed_ids:
         details = data.get("failed_user_details", [])
         error_code = details[0].get("error_code") if details else "unknown"
         log.warning("add_member rejected by API: user_id=%s error=%s", user_id, error_code)
