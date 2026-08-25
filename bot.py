@@ -548,10 +548,6 @@ def _on_payment_succeeded(payment_id: str, user_id: int) -> None:
                 f"Оплата прошла успешно, но не удалось добавить вас в канал.\n\n{_SUPPORT}",
             )
         log.warning("Подписка активирована (invite-link fallback): user_id=%s payment_id=%s", user_id, payment_id)
-        _notify_admin(
-            f"⚠️ Не удалось автоматически добавить в канал (вероятно приватность): "
-            f"{_user_label(user_id)}\npayment_id={payment_id}"
-        )
 
 
 def _on_payment_canceled(payment_id: str, user_id: int) -> None:
