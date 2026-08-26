@@ -36,6 +36,9 @@ _JOIN_HINT = (
 # user_id → "waiting_email"
 _user_state: dict[int, str] = {}
 
+# admin_id → {"segment": "all"|"active", "text": str} — ожидает подтверждения /broadcast
+_pending_broadcast: dict[int, dict] = {}
+
 _EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
 # ──────────────────────────────────────────────
@@ -110,6 +113,8 @@ def _on_message(message: dict) -> None:
         _cmd_findname(user_id, text[10:].strip())
     elif text.startswith("/refund ") and user_id == config.ADMIN_USER_ID:
         _cmd_refund(user_id, text[8:].strip())
+    elif text.startswith("/broadcast ") and user_id == config.ADMIN_USER_ID:
+        _cmd_broadcast(user_id, text[11:].strip())
 
 
 def _on_callback(callback: dict) -> None:
@@ -123,6 +128,10 @@ def _on_callback(callback: dict) -> None:
         _handle_retry_add(user_id)
     elif payload == "get_link":
         _handle_get_link(user_id)
+    elif payload == "confirm_broadcast":
+        _handle_confirm_broadcast(user_id)
+    elif payload == "cancel_broadcast":
+        _handle_cancel_broadcast(user_id)
 
 
 def _cmd_start(user_id: int) -> None:
@@ -401,6 +410,85 @@ def _cmd_members(user_id: int) -> None:
     if chunk:
         max_api.send_message(user_id, chunk)
     log.info("Список участников запрошен admin user_id=%s", user_id)
+
+
+def _cmd_broadcast(admin_id: int, rest: str) -> None:
+    if rest.startswith("all "):
+        segment, text = "all", rest[4:].strip()
+    elif rest.startswith("active "):
+        segment, text = "active", rest[7:].strip()
+    else:
+        max_api.send_message(
+            admin_id,
+            "Использование: /broadcast all <текст> — всем, кто писал боту\n"
+            "или: /broadcast active <текст> — только активным подписчикам",
+        )
+        return
+
+    if not text:
+        max_api.send_message(admin_id, "Текст рассылки не может быть пустым.")
+        return
+
+    recipients = db.get_all_user_ids() if segment == "all" else [
+        r["user_id"] for r in db.get_active_subscribers_with_info()
+    ]
+    if not recipients:
+        max_api.send_message(admin_id, "Получателей не найдено.")
+        return
+
+    _pending_broadcast[admin_id] = {"segment": segment, "text": text}
+    label = "всем, кто писал боту" if segment == "all" else "активным подписчикам"
+    max_api.send_message(
+        admin_id,
+        f"Получатели: {len(recipients)} ({label})\n\n"
+        f"Текст сообщения:\n{text}\n\n"
+        "Отправить?",
+        buttons=[
+            [{"type": "callback", "text": "Отправить", "payload": "confirm_broadcast"}],
+            [{"type": "callback", "text": "Отменить", "payload": "cancel_broadcast"}],
+        ],
+    )
+
+
+def _handle_cancel_broadcast(admin_id: int) -> None:
+    _pending_broadcast.pop(admin_id, None)
+    max_api.send_message(admin_id, "Рассылка отменена.")
+
+
+def _handle_confirm_broadcast(admin_id: int) -> None:
+    pending = _pending_broadcast.pop(admin_id, None)
+    if not pending:
+        max_api.send_message(admin_id, "Нет ожидающей подтверждения рассылки.")
+        return
+
+    max_api.send_message(admin_id, "Рассылка запущена, пришлю отчёт по завершении.")
+    threading.Thread(
+        target=_run_broadcast,
+        args=(admin_id, pending["segment"], pending["text"]),
+        daemon=True,
+    ).start()
+
+
+def _run_broadcast(admin_id: int, segment: str, text: str) -> None:
+    recipients = db.get_all_user_ids() if segment == "all" else [
+        r["user_id"] for r in db.get_active_subscribers_with_info()
+    ]
+    sent = 0
+    failed = 0
+    for uid in recipients:
+        try:
+            max_api.send_message(uid, text)
+            sent += 1
+        except Exception:
+            failed += 1
+            log.warning("Рассылка: не удалось отправить user_id=%s", uid)
+        time.sleep(0.35)
+
+    log.info("Рассылка завершена: сегмент=%s успешно=%d ошибок=%d", segment, sent, failed)
+    max_api.send_message(
+        admin_id,
+        f"Рассылка завершена.\nУспешно: {sent}\nОшибок: {failed}",
+    )
 
 
 def _handle_get_link(user_id: int) -> None:

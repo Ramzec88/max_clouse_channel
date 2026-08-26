@@ -202,6 +202,13 @@ def get_user(user_id: int) -> dict | None:
     return dict(row) if row else None
 
 
+def get_all_user_ids() -> list[int]:
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT user_id FROM users")
+            return [r[0] for r in cur.fetchall()]
+
+
 def find_by_name(query: str) -> list[dict]:
     pattern = f"%{query.lower()}%"
     with _get_conn() as conn:
