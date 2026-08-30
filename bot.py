@@ -412,16 +412,32 @@ def _cmd_members(user_id: int) -> None:
     log.info("Список участников запрошен admin user_id=%s", user_id)
 
 
+_BROADCAST_SEGMENTS = {
+    "all": "всем, кто писал боту",
+    "active": "активным подписчикам",
+    "inactive": "неактивным (оформляли подписку, но сейчас не продлена)",
+}
+
+
+def _broadcast_recipients(segment: str) -> list[int]:
+    if segment == "all":
+        return db.get_all_user_ids()
+    if segment == "active":
+        return [r["user_id"] for r in db.get_active_subscribers_with_info()]
+    return db.get_inactive_subscriber_ids()
+
+
 def _cmd_broadcast(admin_id: int, rest: str) -> None:
-    if rest.startswith("all "):
-        segment, text = "all", rest[4:].strip()
-    elif rest.startswith("active "):
-        segment, text = "active", rest[7:].strip()
-    else:
+    segment, _, text = rest.partition(" ")
+    text = text.strip()
+    if segment not in _BROADCAST_SEGMENTS:
         max_api.send_message(
             admin_id,
-            "Использование: /broadcast all <текст> — всем, кто писал боту\n"
-            "или: /broadcast active <текст> — только активным подписчикам",
+            "Использование: /broadcast <сегмент> <текст>\n\n"
+            "Сегменты:\n"
+            "all — всем, кто писал боту\n"
+            "active — активным подписчикам\n"
+            "inactive — оформляли подписку, но сейчас не продлена",
         )
         return
 
@@ -429,15 +445,13 @@ def _cmd_broadcast(admin_id: int, rest: str) -> None:
         max_api.send_message(admin_id, "Текст рассылки не может быть пустым.")
         return
 
-    recipients = db.get_all_user_ids() if segment == "all" else [
-        r["user_id"] for r in db.get_active_subscribers_with_info()
-    ]
+    recipients = _broadcast_recipients(segment)
     if not recipients:
         max_api.send_message(admin_id, "Получателей не найдено.")
         return
 
     _pending_broadcast[admin_id] = {"segment": segment, "text": text}
-    label = "всем, кто писал боту" if segment == "all" else "активным подписчикам"
+    label = _BROADCAST_SEGMENTS[segment]
     max_api.send_message(
         admin_id,
         f"Получатели: {len(recipients)} ({label})\n\n"
@@ -470,9 +484,7 @@ def _handle_confirm_broadcast(admin_id: int) -> None:
 
 
 def _run_broadcast(admin_id: int, segment: str, text: str) -> None:
-    recipients = db.get_all_user_ids() if segment == "all" else [
-        r["user_id"] for r in db.get_active_subscribers_with_info()
-    ]
+    recipients = _broadcast_recipients(segment)
     sent = 0
     failed = 0
     for uid in recipients:

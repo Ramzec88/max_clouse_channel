@@ -209,6 +209,27 @@ def get_all_user_ids() -> list[int]:
             return [r[0] for r in cur.fetchall()]
 
 
+def get_inactive_subscriber_ids() -> list[int]:
+    """user_id, у которых есть хотя бы одна подписка, но ни одной активной сейчас."""
+    now = datetime.now(timezone.utc)
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT DISTINCT s.user_id
+                FROM subscriptions s
+                WHERE NOT EXISTS (
+                    SELECT 1 FROM subscriptions s2
+                    WHERE s2.user_id = s.user_id
+                      AND s2.status = 'active'
+                      AND s2.expires_at > %s
+                )
+                """,
+                (now,),
+            )
+            return [r[0] for r in cur.fetchall()]
+
+
 def find_by_name(query: str) -> list[dict]:
     pattern = f"%{query.lower()}%"
     with _get_conn() as conn:
