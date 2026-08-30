@@ -431,22 +431,31 @@ def _renew_button() -> list[dict]:
     return [{"type": "callback", "text": f"Оформить/продлить за {config.SUBSCRIPTION_PRICE} руб.", "payload": "renew"}]
 
 
+def _link_button() -> list[dict]:
+    return [{"type": "callback", "text": "Получить ссылку в канал", "payload": "get_link"}]
+
+
+_BROADCAST_BUTTONS = {
+    "btn": ("«Оформить/продлить подписку»", _renew_button),
+    "link": ("«Получить ссылку в канал»", _link_button),
+}
+
+
 def _cmd_broadcast(admin_id: int, rest: str) -> None:
     segment_token, _, text = rest.partition(" ")
     text = text.strip()
     segment, _, flag = segment_token.partition("+")
-    with_button = flag == "btn"
 
-    if segment not in _BROADCAST_SEGMENTS:
+    if segment not in _BROADCAST_SEGMENTS or (flag and flag not in _BROADCAST_BUTTONS):
         max_api.send_message(
             admin_id,
-            "Использование: /broadcast <сегмент>[+btn] <текст>\n\n"
+            "Использование: /broadcast <сегмент>[+btn|+link] <текст>\n\n"
             "Сегменты:\n"
             "all — всем, кто писал боту\n"
             "active — активным подписчикам\n"
             "inactive — оформляли подписку, но сейчас не продлена\n\n"
-            "Добавьте +btn к сегменту (например inactive+btn), чтобы бот сам "
-            "прикрепил к сообщению кнопку «Оформить/продлить подписку».",
+            "+btn — прикрепить кнопку «Оформить/продлить подписку» (например inactive+btn)\n"
+            "+link — прикрепить кнопку «Получить ссылку в канал» (например active+link)",
         )
         return
 
@@ -459,9 +468,9 @@ def _cmd_broadcast(admin_id: int, rest: str) -> None:
         max_api.send_message(admin_id, "Получателей не найдено.")
         return
 
-    _pending_broadcast[admin_id] = {"segment": segment, "text": text, "with_button": with_button}
+    _pending_broadcast[admin_id] = {"segment": segment, "text": text, "flag": flag or None}
     label = _BROADCAST_SEGMENTS[segment]
-    button_note = "\nБудет добавлена кнопка «Оформить/продлить подписку»." if with_button else ""
+    button_note = f"\nБудет добавлена кнопка {_BROADCAST_BUTTONS[flag][0]}." if flag else ""
     max_api.send_message(
         admin_id,
         f"Получатели: {len(recipients)} ({label}){button_note}\n\n"
@@ -488,14 +497,14 @@ def _handle_confirm_broadcast(admin_id: int) -> None:
     max_api.send_message(admin_id, "Рассылка запущена, пришлю отчёт по завершении.")
     threading.Thread(
         target=_run_broadcast,
-        args=(admin_id, pending["segment"], pending["text"], pending["with_button"]),
+        args=(admin_id, pending["segment"], pending["text"], pending["flag"]),
         daemon=True,
     ).start()
 
 
-def _run_broadcast(admin_id: int, segment: str, text: str, with_button: bool) -> None:
+def _run_broadcast(admin_id: int, segment: str, text: str, flag: str | None) -> None:
     recipients = _broadcast_recipients(segment)
-    buttons = [_renew_button()] if with_button else None
+    buttons = [_BROADCAST_BUTTONS[flag][1]()] if flag else None
     sent = 0
     failed = 0
     for uid in recipients:
