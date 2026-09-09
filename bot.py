@@ -113,6 +113,8 @@ def _on_message(message: dict) -> None:
         _cmd_findname(user_id, text[10:].strip())
     elif text.startswith("/refund ") and user_id == config.ADMIN_USER_ID:
         _cmd_refund(user_id, text[8:].strip())
+    elif text.startswith("/activate ") and user_id == config.ADMIN_USER_ID:
+        _cmd_activate(user_id, text[10:].strip())
     elif text.startswith("/broadcast ") and user_id == config.ADMIN_USER_ID:
         _cmd_broadcast(user_id, text[11:].strip())
 
@@ -384,6 +386,25 @@ def _cmd_refund(admin_id: int, identifier: str) -> None:
         f"подписка payment_id={sub['payment_id']} помечена как возврат.",
     )
     log.info("Refund: user_id=%s payment_id=%s removed=%s admin=%s", user_id, sub['payment_id'], removed, admin_id)
+
+
+def _cmd_activate(admin_id: int, payment_id: str) -> None:
+    if not payment_id:
+        max_api.send_message(admin_id, "Использование: /activate <payment_id>")
+        return
+
+    row = db.get_payment_by_id(payment_id)
+    if not row:
+        max_api.send_message(admin_id, f"payment_id={payment_id} не найден в БД.")
+        return
+
+    if row["status"] == "active":
+        max_api.send_message(admin_id, f"Подписка {payment_id} уже активна (user_id={row['user_id']}).")
+        return
+
+    log.info("Ручная активация: payment_id=%s user_id=%s admin=%s", payment_id, row["user_id"], admin_id)
+    _on_payment_succeeded(payment_id, row["user_id"])
+    max_api.send_message(admin_id, f"Подписка {payment_id} активирована вручную (user_id={row['user_id']}).")
 
 
 def _cmd_members(user_id: int) -> None:

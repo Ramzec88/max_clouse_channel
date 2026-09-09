@@ -86,6 +86,14 @@ def get_pending_payments() -> list[dict]:
             return [dict(r) for r in cur.fetchall()]
 
 
+def get_payment_by_id(payment_id: str) -> dict | None:
+    with _get_conn() as conn:
+        with _cursor(conn) as cur:
+            cur.execute("SELECT * FROM subscriptions WHERE payment_id = %s", (payment_id,))
+            row = cur.fetchone()
+    return dict(row) if row else None
+
+
 def activate_subscription(payment_id: str) -> int:
     now = datetime.now(timezone.utc)
     expires = _expiry_from_now()
