@@ -373,6 +373,7 @@ def _cmd_refund(admin_id: int, identifier: str) -> None:
 
     db.mark_refunded(sub["payment_id"])
     removed = max_api.remove_member_from_channel(config.MAX_CHANNEL_ID, user_id)
+    _remove_from_group(user_id)
 
     max_api.send_message(
         user_id,
@@ -645,6 +646,16 @@ def _notify_admin(text: str) -> None:
             log.warning("Не удалось отправить уведомление админу")
 
 
+def _remove_from_group(user_id: int) -> None:
+    if not config.MAX_GROUP_ID:
+        return
+    try:
+        removed = max_api.remove_member_from_channel(config.MAX_GROUP_ID, user_id)
+        log.info("Удаление из группы: user_id=%s removed=%s", user_id, removed)
+    except Exception:
+        log.exception("Ошибка при удалении из группы user_id=%s", user_id)
+
+
 def _on_payment_succeeded(payment_id: str, user_id: int) -> None:
     db.activate_subscription(payment_id)
     sub = db.get_active_subscription(user_id)
@@ -730,6 +741,7 @@ def _check_expired_subscriptions() -> None:
 
             removed = max_api.remove_member_from_channel(channel_id, user_id)
             log.info("Удаление из канала: user_id=%s removed=%s", user_id, removed)
+            _remove_from_group(user_id)
 
             # Помечаем истёкшей только после удаления — чтобы повторить если не вышло
             db.mark_expired(payment_id)
