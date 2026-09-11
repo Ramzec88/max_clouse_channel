@@ -115,6 +115,8 @@ def _on_message(message: dict) -> None:
         _cmd_refund(user_id, text[8:].strip())
     elif text.startswith("/activate ") and user_id == config.ADMIN_USER_ID:
         _cmd_activate(user_id, text[10:].strip())
+    elif text.startswith("/addmember ") and user_id == config.ADMIN_USER_ID:
+        _cmd_addmember(user_id, text[11:].strip())
     elif text.startswith("/broadcast ") and user_id == config.ADMIN_USER_ID:
         _cmd_broadcast(user_id, text[11:].strip())
 
@@ -225,6 +227,10 @@ def _handle_email_input(user_id: int, text: str) -> None:
 
 
 def _on_user_added(update: dict) -> None:
+    log.info(
+        "user_added event: user_id=%s chat_id=%s is_channel=%s",
+        update.get("user_id"), update.get("chat_id"), update.get("is_channel"),
+    )
     # Срабатывает при любом вступлении: по ссылке или через API
     if not update.get("is_channel"):
         return  # интересуют только каналы
@@ -406,6 +412,20 @@ def _cmd_activate(admin_id: int, payment_id: str) -> None:
     log.info("Ручная активация: payment_id=%s user_id=%s admin=%s", payment_id, row["user_id"], admin_id)
     _on_payment_succeeded(payment_id, row["user_id"])
     max_api.send_message(admin_id, f"Подписка {payment_id} активирована вручную (user_id={row['user_id']}).")
+
+
+def _cmd_addmember(admin_id: int, arg: str) -> None:
+    if not arg.strip().isdigit():
+        max_api.send_message(admin_id, "Использование: /addmember <user_id> (число)")
+        return
+
+    user_id = int(arg.strip())
+    added = max_api.add_member_to_channel(config.MAX_CHANNEL_ID, user_id)
+    log.info("Ручное добавление в канал: user_id=%s added=%s admin=%s", user_id, added, admin_id)
+    if added:
+        max_api.send_message(admin_id, f"user_id={user_id} добавлен в канал.")
+    else:
+        max_api.send_message(admin_id, f"Не удалось добавить user_id={user_id} — подробности в логах.")
 
 
 def _cmd_members(user_id: int) -> None:
