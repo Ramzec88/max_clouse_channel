@@ -676,6 +676,55 @@ def _remove_from_group(user_id: int) -> None:
         log.exception("Ошибка при удалении из группы user_id=%s", user_id)
 
 
+def _sync_group_membership() -> None:
+    """Сверяет реальный список участников группы с активными подписками и удаляет лишних."""
+    if not config.MAX_GROUP_ID:
+        return
+
+    try:
+        members = max_api.get_chat_members(config.MAX_GROUP_ID)
+    except Exception:
+        log.exception("Ошибка получения списка участников группы")
+        return
+
+    log.info("Синхронизация группы: участников в чате %d", len(members))
+    removed_count = 0
+    for member in members:
+        user_id = member.get("user_id")
+        if user_id is None:
+            continue
+        if member.get("is_bot"):
+            continue
+        if user_id in config.PROTECTED_USER_IDS:
+            continue
+        if db.get_active_subscription(user_id):
+            continue
+
+        try:
+            removed = max_api.remove_member_from_channel(config.MAX_GROUP_ID, user_id)
+            log.info("Синхронизация группы: удалён user_id=%s removed=%s", user_id, removed)
+            if removed:
+                removed_count += 1
+        except Exception:
+            log.exception("Ошибка удаления при синхронизации группы user_id=%s", user_id)
+
+    if removed_count:
+        log.info("Синхронизация группы завершена: удалено %d участник(ов)", removed_count)
+
+
+def run_group_sync_loop() -> None:
+    if not config.MAX_GROUP_ID:
+        log.info("MAX_GROUP_ID не задан — синхронизация группы отключена")
+        return
+    log.info("Синхронизация группы запущена (интервал %d сек.)", config.GROUP_SYNC_INTERVAL_SECONDS)
+    while True:
+        time.sleep(config.GROUP_SYNC_INTERVAL_SECONDS)
+        try:
+            _sync_group_membership()
+        except Exception:
+            log.exception("Необработанная ошибка синхронизации группы, продолжаем")
+
+
 def _on_payment_succeeded(payment_id: str, user_id: int) -> None:
     db.activate_subscription(payment_id)
     sub = db.get_active_subscription(user_id)
@@ -825,5 +874,8 @@ if __name__ == "__main__":
 
     poller_thread = threading.Thread(target=run_payment_poller, daemon=True)
     poller_thread.start()
+
+    group_sync_thread = threading.Thread(target=run_group_sync_loop, daemon=True)
+    group_sync_thread.start()
 
     run_poll_loop()

@@ -109,6 +109,30 @@ def get_channel_invite_link(chat_id: int) -> str | None:
     return resp.json().get("link")
 
 
+def get_chat_members(chat_id: int) -> list[dict]:
+    """Возвращает всех участников чата (каждый — dict с user_id, is_bot и т.д.)."""
+    members: list[dict] = []
+    marker: int | None = None
+    while True:
+        params: dict = {"count": 100}
+        if marker is not None:
+            params["marker"] = marker
+        resp = _session.get(
+            _url(f"/chats/{chat_id}/members"),
+            params=params,
+            headers=_headers(),
+            timeout=15,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        batch = data.get("members", [])
+        members.extend(batch)
+        marker = data.get("marker")
+        if not marker or not batch:
+            break
+    return members
+
+
 def get_updates(marker: int | None = None, timeout: int = 30) -> dict:
     params: dict = {"timeout": timeout}
     if marker is not None:
