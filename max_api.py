@@ -109,6 +109,20 @@ def get_channel_invite_link(chat_id: int) -> str | None:
     return resp.json().get("link")
 
 
+def set_commands(commands: list[dict]) -> bool:
+    resp = _session.patch(
+        _url("/me/commands"),
+        headers=_headers(),
+        json={"commands": commands},
+        timeout=10,
+    )
+    log.info("set_commands status=%s body=%s", resp.status_code, resp.text)
+    if not resp.ok:
+        log.warning("set_commands failed: %s %s", resp.status_code, resp.text)
+        return False
+    return True
+
+
 def get_chat_members(chat_id: int) -> list[dict]:
     """Возвращает всех участников чата (каждый — dict с user_id, is_bot и т.д.)."""
     members: list[dict] = []

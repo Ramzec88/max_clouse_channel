@@ -15,6 +15,8 @@ logging.basicConfig(
 log = logging.getLogger(__name__)
 
 _SUPPORT = "Поддержка: https://max.ru/id320203526914_3_bot"
+_SUPPORT_URL = "https://max.ru/id320203526914_3_bot"
+_SUPPORT_BTN = {"type": "link", "text": "Поддержка", "url": _SUPPORT_URL}
 
 _MARKET_BTN = {"type": "link", "text": "Магазин Мишки Макса", "url": "https://market.mishka-max.ru"}
 
@@ -102,6 +104,12 @@ def _on_message(message: dict) -> None:
 
     if text in ("/start", "/start@"):
         _cmd_start(user_id)
+    elif text in ("/status", "/status@"):
+        _cmd_status(user_id)
+    elif text in ("/link", "/link@"):
+        _handle_get_link(user_id)
+    elif text in ("/help", "/help@"):
+        _cmd_help(user_id)
     elif text == "/stats" and user_id == config.ADMIN_USER_ID:
         _cmd_stats(user_id)
     elif text == "/members" and user_id == config.ADMIN_USER_ID:
@@ -171,6 +179,36 @@ def _cmd_start(user_id: int) -> None:
             [{"type": "callback", "text": f"Подписаться за {config.SUBSCRIPTION_PRICE} руб.", "payload": "subscribe"}],
             [_MARKET_BTN],
         ],
+    )
+
+
+def _cmd_status(user_id: int) -> None:
+    sub = db.get_active_subscription(user_id)
+    if sub:
+        max_api.send_message(
+            user_id,
+            f"Подписка активна до {_fmt_date(sub['expires_at'])}.",
+            buttons=[[{"type": "callback", "text": "Получить ссылку в канал", "payload": "get_link"}]],
+        )
+        return
+    period = f"{config.SUBSCRIPTION_MINUTES} мин." if config.SUBSCRIPTION_MINUTES else f"{config.SUBSCRIPTION_MONTHS} мес."
+    max_api.send_message(
+        user_id,
+        f"Активной подписки нет.\n\nОформить на {period} — "
+        f"{config.SUBSCRIPTION_PRICE} {config.SUBSCRIPTION_CURRENCY}.",
+        buttons=[[{"type": "callback", "text": f"Подписаться за {config.SUBSCRIPTION_PRICE} руб.", "payload": "subscribe"}]],
+    )
+
+
+def _cmd_help(user_id: int) -> None:
+    max_api.send_message(
+        user_id,
+        "Чем могу помочь?\n\n"
+        "/status — статус подписки\n"
+        "/link — получить свежую ссылку в канал\n"
+        "/start — оформить подписку\n\n"
+        "Если ничего не помогло — support-бот ниже поможет решить проблему.",
+        buttons=[[_SUPPORT_BTN]],
     )
 
 
@@ -871,6 +909,13 @@ if __name__ == "__main__":
 
     db.init_db()
     payments.configure()
+
+    max_api.set_commands([
+        {"name": "/start", "description": "Начать / оформить подписку"},
+        {"name": "/status", "description": "Статус подписки"},
+        {"name": "/link", "description": "Получить свежую ссылку в канал"},
+        {"name": "/help", "description": "Помощь и поддержка"},
+    ])
 
     poller_thread = threading.Thread(target=run_payment_poller, daemon=True)
     poller_thread.start()
