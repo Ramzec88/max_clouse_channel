@@ -890,13 +890,14 @@ def run_poll_loop() -> None:
 # Вспомогательные функции
 # ──────────────────────────────────────────────
 
-def _fmt_date(iso: str) -> str:
+def _fmt_date(value) -> str:
     from datetime import datetime, timezone
     try:
-        dt = datetime.fromisoformat(iso).astimezone(timezone.utc)
+        dt = value if isinstance(value, datetime) else datetime.fromisoformat(value)
+        dt = dt.astimezone(timezone.utc)
         return dt.strftime("%d.%m.%Y %H:%M UTC")
     except Exception:
-        return iso
+        return str(value)
 
 
 # ──────────────────────────────────────────────
