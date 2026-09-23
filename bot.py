@@ -271,7 +271,17 @@ def _on_user_added(update: dict) -> None:
     # Срабатывает при любом вступлении: по ссылке или через API
     if not update.get("is_channel"):
         return  # интересуют только каналы
-    user_id: int = update["user_id"]
+
+    user_info = update.get("user") or {}
+    user_id = update.get("user_id") or user_info.get("user_id")
+    if user_id is None:
+        log.warning("user_added: не удалось определить user_id из события: %s", update)
+        return
+
+    if user_info.get("is_bot"):
+        log.info("user_added: user_id=%s — бот, пропускаем", user_id)
+        return
+
     chat_id: int = update["chat_id"]
 
     if chat_id != config.MAX_CHANNEL_ID:
