@@ -910,12 +910,15 @@ if __name__ == "__main__":
     db.init_db()
     payments.configure()
 
-    max_api.set_commands([
-        {"name": "/start", "description": "Начать / оформить подписку"},
-        {"name": "/status", "description": "Статус подписки"},
-        {"name": "/link", "description": "Получить свежую ссылку в канал"},
-        {"name": "/help", "description": "Помощь и поддержка"},
-    ])
+    try:
+        max_api.set_commands([
+            {"name": "/start", "description": "Начать / оформить подписку"},
+            {"name": "/status", "description": "Статус подписки"},
+            {"name": "/link", "description": "Получить свежую ссылку в канал"},
+            {"name": "/help", "description": "Помощь и поддержка"},
+        ])
+    except Exception:
+        log.exception("Не удалось установить меню команд, продолжаем без него")
 
     poller_thread = threading.Thread(target=run_payment_poller, daemon=True)
     poller_thread.start()
