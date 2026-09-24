@@ -36,6 +36,7 @@ _MIGRATE = """
 ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS email TEXT;
 CREATE INDEX IF NOT EXISTS idx_sub_email ON subscriptions(email);
 ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS amount NUMERIC(10,2);
+ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS reminder_sent_at TIMESTAMPTZ;
 """
 
 
@@ -151,6 +152,31 @@ def get_expired_subscriptions() -> list[dict]:
                 (now,),
             )
             return [dict(r) for r in cur.fetchall()]
+
+
+def get_expiring_soon(hours_ahead: int) -> list[dict]:
+    now = datetime.now(timezone.utc)
+    soon = now + timedelta(hours=hours_ahead)
+    with _get_conn() as conn:
+        with _cursor(conn) as cur:
+            cur.execute(
+                "SELECT * FROM subscriptions WHERE status='active'"
+                " AND expires_at > %s AND expires_at <= %s"
+                " AND reminder_sent_at IS NULL",
+                (now, soon),
+            )
+            return [dict(r) for r in cur.fetchall()]
+
+
+def mark_reminder_sent(payment_id: str) -> None:
+    now = datetime.now(timezone.utc)
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE subscriptions SET reminder_sent_at=%s WHERE payment_id=%s",
+                (now, payment_id),
+            )
+        conn.commit()
 
 
 def mark_expired(payment_id: str) -> None:

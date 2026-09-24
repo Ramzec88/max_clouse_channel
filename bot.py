@@ -152,14 +152,14 @@ def _cmd_start(user_id: int) -> None:
         if added:
             max_api.send_message(
                 user_id,
-                f"Ваша подписка активна до {_fmt_date(sub['expires_at'])}.\n"
+                f"Ваш доступ активен до {_fmt_date(sub['expires_at'])}.\n"
                 "Канал доступен в ваших чатах MAX.",
                 buttons=[[{"type": "callback", "text": "Получить ссылку в канал", "payload": "get_link"}]],
             )
         else:
             max_api.send_message(
                 user_id,
-                f"Ваша подписка активна до {_fmt_date(sub['expires_at'])}.\n\n"
+                f"Ваш доступ активен до {_fmt_date(sub['expires_at'])}.\n\n"
                 + _PRIVACY_MSG,
                 buttons=[
                     [{"type": "callback", "text": "Попробовать ещё раз", "payload": "retry_add"}],
@@ -176,7 +176,7 @@ def _cmd_start(user_id: int) -> None:
         f"всего {config.SUBSCRIPTION_PRICE} {config.SUBSCRIPTION_CURRENCY}.\n\n"
         "Нажмите кнопку ниже, чтобы оплатить.",
         buttons=[
-            [{"type": "callback", "text": f"Подписаться за {config.SUBSCRIPTION_PRICE} руб.", "payload": "subscribe"}],
+            [{"type": "callback", "text": f"Оформить доступ за {config.SUBSCRIPTION_PRICE} руб.", "payload": "subscribe"}],
             [_MARKET_BTN],
         ],
     )
@@ -187,16 +187,16 @@ def _cmd_status(user_id: int) -> None:
     if sub:
         max_api.send_message(
             user_id,
-            f"Подписка активна до {_fmt_date(sub['expires_at'])}.",
+            f"Доступ активен до {_fmt_date(sub['expires_at'])}.",
             buttons=[[{"type": "callback", "text": "Получить ссылку в канал", "payload": "get_link"}]],
         )
         return
     period = f"{config.SUBSCRIPTION_MINUTES} мин." if config.SUBSCRIPTION_MINUTES else f"{config.SUBSCRIPTION_MONTHS} мес."
     max_api.send_message(
         user_id,
-        f"Активной подписки нет.\n\nОформить на {period} — "
+        f"Активного доступа нет.\n\nОформить на {period} — "
         f"{config.SUBSCRIPTION_PRICE} {config.SUBSCRIPTION_CURRENCY}.",
-        buttons=[[{"type": "callback", "text": f"Подписаться за {config.SUBSCRIPTION_PRICE} руб.", "payload": "subscribe"}]],
+        buttons=[[{"type": "callback", "text": f"Оформить доступ за {config.SUBSCRIPTION_PRICE} руб.", "payload": "subscribe"}]],
     )
 
 
@@ -204,9 +204,9 @@ def _cmd_help(user_id: int) -> None:
     max_api.send_message(
         user_id,
         "Чем могу помочь?\n\n"
-        "/status — статус подписки\n"
+        "/status — статус доступа\n"
         "/link — получить свежую ссылку в канал\n"
-        "/start — оформить подписку\n\n"
+        "/start — оформить доступ\n\n"
         "Если ничего не помогло — support-бот ниже поможет решить проблему.",
         buttons=[[_SUPPORT_BTN]],
     )
@@ -223,7 +223,7 @@ def _handle_subscribe(user_id: int) -> None:
     if db.get_active_subscription(user_id):
         max_api.send_message(
             user_id,
-            "У вас уже есть активная подписка. Напишите /start.",
+            "У вас уже есть активный доступ. Напишите /start.",
         )
         return
 
@@ -257,7 +257,7 @@ def _handle_email_input(user_id: int, text: str) -> None:
     )
     max_api.send_message(
         user_id,
-        f"Оплатите подписку по ссылке:\n{payment['confirmation_url']}\n\n"
+        f"Оплатите доступ по ссылке:\n{payment['confirmation_url']}\n\n"
         "После оплаты вы будете автоматически добавлены в канал (обычно в течение 15 секунд).",
     )
     log.info("Создан платёж %s для user_id=%s email=%s", payment["payment_id"], user_id, email)
@@ -302,12 +302,12 @@ def _on_user_added(update: dict) -> None:
     period = f"{config.SUBSCRIPTION_MINUTES} мин." if config.SUBSCRIPTION_MINUTES else f"{config.SUBSCRIPTION_MONTHS} мес."
     max_api.send_message(
         user_id,
-        "У вас нет активной подписки на этот канал.\n\n"
-        f"Оформите подписку на {period} — "
+        "У вас нет активного доступа к этому каналу.\n\n"
+        f"Оформите доступ на {period} — "
         f"{config.SUBSCRIPTION_PRICE} {config.SUBSCRIPTION_CURRENCY}.\n\n"
         f"{_SUPPORT}",
         buttons=[
-            [{"type": "callback", "text": f"Подписаться за {config.SUBSCRIPTION_PRICE} руб.", "payload": "subscribe"}],
+            [{"type": "callback", "text": f"Оформить доступ за {config.SUBSCRIPTION_PRICE} руб.", "payload": "subscribe"}],
             [_MARKET_BTN],
         ],
     )
@@ -430,7 +430,7 @@ def _cmd_refund(admin_id: int, identifier: str) -> None:
 
     max_api.send_message(
         user_id,
-        "Ваша подписка отменена, доступ к каналу закрыт.\n\n"
+        "Ваш доступ к каналу отменён.\n\n"
         f"{_SUPPORT}",
     )
 
@@ -525,7 +525,7 @@ def _link_button() -> list[dict]:
 
 
 _BROADCAST_BUTTONS = {
-    "btn": ("«Оформить/продлить подписку»", _renew_button),
+    "btn": ("«Оформить/продлить доступ»", _renew_button),
     "link": ("«Получить ссылку в канал»", _link_button),
 }
 
@@ -543,7 +543,7 @@ def _cmd_broadcast(admin_id: int, rest: str) -> None:
             "all — всем, кто писал боту\n"
             "active — активным подписчикам\n"
             "inactive — оформляли подписку, но сейчас не продлена\n\n"
-            "+btn — прикрепить кнопку «Оформить/продлить подписку» (например inactive+btn)\n"
+            "+btn — прикрепить кнопку «Оформить/продлить доступ» (например inactive+btn)\n"
             "+link — прикрепить кнопку «Получить ссылку в канал» (например active+link)",
         )
         return
@@ -615,7 +615,7 @@ def _run_broadcast(admin_id: int, segment: str, text: str, flag: str | None) -> 
 def _handle_get_link(user_id: int) -> None:
     sub = db.get_active_subscription(user_id)
     if not sub:
-        max_api.send_message(user_id, f"Активная подписка не найдена. Напишите /start.\n\n{_SUPPORT}")
+        max_api.send_message(user_id, f"Активный доступ не найден. Напишите /start.\n\n{_SUPPORT}")
         return
 
     # Сначала пробуем добавить через API — вдруг настройки изменились
@@ -646,7 +646,7 @@ def _handle_get_link(user_id: int) -> None:
 def _handle_retry_add(user_id: int) -> None:
     sub = db.get_active_subscription(user_id)
     if not sub:
-        max_api.send_message(user_id, f"Активная подписка не найдена. Напишите /start.\n\n{_SUPPORT}")
+        max_api.send_message(user_id, f"Активный доступ не найден. Напишите /start.\n\n{_SUPPORT}")
         return
 
     added = max_api.add_member_to_channel(config.MAX_CHANNEL_ID, user_id)
@@ -680,6 +680,7 @@ def run_payment_poller() -> None:
                 log.info("Поллер: активных подписок в БД: %d", active_count)
             _check_pending_payments()
             _check_expired_subscriptions()
+            _check_expiring_soon()
         except Exception:
             log.exception("Необработанная ошибка в поллере, продолжаем")
 
@@ -866,8 +867,8 @@ def _check_expired_subscriptions() -> None:
             period = f"{config.SUBSCRIPTION_MINUTES} мин." if config.SUBSCRIPTION_MINUTES else f"{config.SUBSCRIPTION_MONTHS} мес."
             max_api.send_message(
                 user_id,
-                "Ваша подписка на закрытый канал истекла. Вы были удалены из канала.\n\n"
-                f"Чтобы возобновить доступ, оформите новую подписку на {period}.",
+                "Ваш доступ к закрытому каналу закончился. Вы были удалены из канала.\n\n"
+                f"Чтобы возобновить доступ, оформите его снова на {period}.",
                 buttons=[
                     [{"type": "callback", "text": f"Продлить за {config.SUBSCRIPTION_PRICE} руб.", "payload": "renew"}],
                     [_MARKET_BTN],
@@ -876,6 +877,41 @@ def _check_expired_subscriptions() -> None:
             log.info("Подписка истекла: user_id=%s payment_id=%s", user_id, payment_id)
         except Exception:
             log.exception("Ошибка при обработке истёкшей подписки user_id=%s payment_id=%s", user_id, payment_id)
+
+
+def _check_expiring_soon() -> None:
+    try:
+        expiring = db.get_expiring_soon(hours_ahead=24)
+    except Exception:
+        log.exception("Ошибка получения истекающих доступов")
+        return
+
+    for row in expiring:
+        payment_id: str = row["payment_id"]
+        user_id: int = row["user_id"]
+        try:
+            if user_id in config.PROTECTED_USER_IDS:
+                db.mark_reminder_sent(payment_id)
+                continue
+
+            current = db.get_active_subscription(user_id)
+            if current and current["payment_id"] != payment_id:
+                # Пользователь уже продлил доступ другим платежом — это напоминание устарело
+                db.mark_reminder_sent(payment_id)
+                continue
+
+            max_api.send_message(
+                user_id,
+                f"Напоминаем: ваш доступ к закрытому каналу истекает {_fmt_date(row['expires_at'])}.\n\n"
+                "Продлите заранее, чтобы не потерять доступ.",
+                buttons=[
+                    [{"type": "callback", "text": f"Продлить за {config.SUBSCRIPTION_PRICE} руб.", "payload": "renew"}],
+                ],
+            )
+            db.mark_reminder_sent(payment_id)
+            log.info("Напоминание об истечении отправлено: user_id=%s payment_id=%s", user_id, payment_id)
+        except Exception:
+            log.exception("Ошибка отправки напоминания user_id=%s payment_id=%s", user_id, payment_id)
 
 
 # ──────────────────────────────────────────────
@@ -923,8 +959,8 @@ if __name__ == "__main__":
 
     try:
         max_api.set_commands([
-            {"name": "/start", "description": "Начать / оформить подписку"},
-            {"name": "/status", "description": "Статус подписки"},
+            {"name": "/start", "description": "Начать / оформить доступ"},
+            {"name": "/status", "description": "Статус доступа"},
             {"name": "/link", "description": "Получить свежую ссылку в канал"},
             {"name": "/help", "description": "Помощь и поддержка"},
         ])
