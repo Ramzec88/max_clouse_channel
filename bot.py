@@ -126,6 +126,8 @@ def _on_message(message: dict) -> None:
         _cmd_addmember(user_id, text[11:].strip())
     elif text.startswith("/broadcast ") and user_id == config.ADMIN_USER_ID:
         _cmd_broadcast(user_id, text[11:].strip())
+    elif text == "/linkupdate" and user_id == config.ADMIN_USER_ID:
+        _cmd_linkupdate(user_id)
 
 
 def _on_callback(callback: dict) -> None:
@@ -528,6 +530,16 @@ _BROADCAST_BUTTONS = {
     "btn": ("«Оформить/продлить доступ»", _renew_button),
     "link": ("«Получить ссылку в канал»", _link_button),
 }
+
+
+_LINKUPDATE_TEXT = (
+    "Ссылка для вступления в канал обновилась. Если ваша ссылка перестала "
+    "работать — нажмите кнопку ниже, чтобы получить новую."
+)
+
+
+def _cmd_linkupdate(admin_id: int) -> None:
+    _cmd_broadcast(admin_id, f"active+link {_LINKUPDATE_TEXT}")
 
 
 def _cmd_broadcast(admin_id: int, rest: str) -> None:
