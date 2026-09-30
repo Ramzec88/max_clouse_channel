@@ -94,6 +94,10 @@ def remove_member_from_channel(chat_id: int, user_id: int) -> bool:
     if not resp.ok:
         log.warning("remove_member failed: %s %s", resp.status_code, resp.text)
         return False
+    data = resp.json()
+    if data.get("success") is False:
+        log.warning("remove_member rejected by API: %s", data.get("message"))
+        return False
     return True
 
 
