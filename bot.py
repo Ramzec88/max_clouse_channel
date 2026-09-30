@@ -464,17 +464,34 @@ def _cmd_activate(admin_id: int, payment_id: str) -> None:
 
 
 def _cmd_addmember(admin_id: int, arg: str) -> None:
-    if not arg.strip().isdigit():
-        max_api.send_message(admin_id, "Использование: /addmember <user_id> (число)")
+    parts = arg.strip().split()
+    if not parts or not parts[0].isdigit():
+        max_api.send_message(
+            admin_id,
+            "Использование: /addmember <user_id> [group]\n"
+            "Без group — добавляет в канал, с group — в группу.",
+        )
         return
 
-    user_id = int(arg.strip())
-    added = max_api.add_member_to_channel(config.MAX_CHANNEL_ID, user_id)
-    log.info("Ручное добавление в канал: user_id=%s added=%s admin=%s", user_id, added, admin_id)
-    if added:
-        max_api.send_message(admin_id, f"user_id={user_id} добавлен в канал.")
+    user_id = int(parts[0])
+    target_group = len(parts) > 1 and parts[1].lower() == "group"
+
+    if target_group:
+        if not config.MAX_GROUP_ID:
+            max_api.send_message(admin_id, "MAX_GROUP_ID не настроен.")
+            return
+        chat_id = config.MAX_GROUP_ID
+        label = "группу"
     else:
-        max_api.send_message(admin_id, f"Не удалось добавить user_id={user_id} — подробности в логах.")
+        chat_id = config.MAX_CHANNEL_ID
+        label = "канал"
+
+    added = max_api.add_member_to_channel(chat_id, user_id)
+    log.info("Ручное добавление в %s: user_id=%s added=%s admin=%s", label, user_id, added, admin_id)
+    if added:
+        max_api.send_message(admin_id, f"user_id={user_id} добавлен в {label}.")
+    else:
+        max_api.send_message(admin_id, f"Не удалось добавить user_id={user_id} в {label} — подробности в логах.")
 
 
 def _cmd_members(user_id: int) -> None:
