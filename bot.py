@@ -125,6 +125,8 @@ def _on_message(message: dict) -> None:
         _cmd_broadcast(user_id, text[11:].strip())
     elif text == "/linkupdate" and user_id == config.ADMIN_USER_ID:
         _cmd_linkupdate(user_id)
+    elif text.startswith("/message ") and user_id == config.ADMIN_USER_ID:
+        _cmd_message(user_id, text[9:].strip())
 
 
 def _on_callback(callback: dict) -> None:
@@ -554,6 +556,36 @@ _LINKUPDATE_TEXT = (
 
 def _cmd_linkupdate(admin_id: int) -> None:
     _cmd_broadcast(admin_id, f"active+link {_LINKUPDATE_TEXT}")
+
+
+def _cmd_message(admin_id: int, rest: str) -> None:
+    target_token, _, text = rest.partition(" ")
+    text = text.strip()
+    target, _, flag = target_token.partition("+")
+
+    if not target.isdigit() or (flag and flag not in _BROADCAST_BUTTONS):
+        max_api.send_message(
+            admin_id,
+            "Использование: /message <user_id>[+btn|+link] <текст>\n\n"
+            "+btn — прикрепить кнопку «Оформить/продлить доступ»\n"
+            "+link — прикрепить кнопку «Получить ссылку в канал»",
+        )
+        return
+
+    if not text:
+        max_api.send_message(admin_id, "Текст сообщения не может быть пустым.")
+        return
+
+    user_id = int(target)
+    buttons = [_BROADCAST_BUTTONS[flag][1]()] if flag else None
+    try:
+        max_api.send_message(user_id, text, buttons=buttons)
+    except Exception:
+        log.exception("Ошибка отправки сообщения user_id=%s", user_id)
+        max_api.send_message(admin_id, f"Не удалось отправить сообщение user_id={user_id} — подробности в логах.")
+        return
+
+    max_api.send_message(admin_id, f"Сообщение отправлено user_id={user_id}.")
 
 
 def _cmd_broadcast(admin_id: int, rest: str) -> None:
